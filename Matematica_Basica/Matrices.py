@@ -290,21 +290,39 @@ class VentanaMatrices(QWidget):
                     self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
                     return
                 C = [[A[i][j] + B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
-                self.procedimiento_text.setPlainText("A + B =\n" + self.mostrar_matriz(C))
+                texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la suma:\n"
+                for i in range(len(A)):
+                    for j in range(len(A[0])):
+                        texto += f"Elemento ({i+1},{j+1}): A[{i+1}][{j+1}] + B[{i+1}][{j+1}] = {A[i][j]} + {B[i][j]} = {C[i][j]}\n"
+                texto += "\nResultado A + B:\n" + self.mostrar_matriz(C)
+                self.procedimiento_text.setPlainText(texto)
 
             elif op == "Resta":
                 if len(A) != len(B) or len(A[0]) != len(B[0]):
                     self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
                     return
                 C = [[A[i][j] - B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
-                self.procedimiento_text.setPlainText("A - B =\n" + self.mostrar_matriz(C))
+                texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la resta:\n"
+                for i in range(len(A)):
+                    for j in range(len(A[0])):
+                        texto += f"Elemento ({i+1},{j+1}): A[{i+1}][{j+1}] - B[{i+1}][{j+1}] = {A[i][j]} - {B[i][j]} = {C[i][j]}\n"
+                texto += "\nResultado A - B:\n" + self.mostrar_matriz(C)
+                self.procedimiento_text.setPlainText(texto)
 
             elif op == "Multiplicacion":
                 if len(A[0]) != len(B):
                     self.procedimiento_text.setPlainText("Error: columnas(A) ≠ filas(B).")
                     return
                 C = [[sum(A[i][k]*B[k][j] for k in range(len(B))) for j in range(len(B[0]))] for i in range(len(A))]
-                self.procedimiento_text.setPlainText("A × B =\n" + self.mostrar_matriz(C))
+                texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la multiplicación:\n"
+                for i in range(len(A)):
+                    for j in range(len(B[0])):
+                        values = [f"{A[i][k]} * {B[k][j]}" for k in range(len(B))]
+                        sum_str = " + ".join(values)
+                        result = sum(A[i][k] * B[k][j] for k in range(len(B)))
+                        texto += f"Elemento ({i+1},{j+1}): {sum_str} = {result}\n"
+                texto += "\nResultado A × B:\n" + self.mostrar_matriz(C)
+                self.procedimiento_text.setPlainText(texto)
 
             elif op == "Gauss":
                 pasos, A_escalon, pivots = self.eliminacion_adelante(A)
