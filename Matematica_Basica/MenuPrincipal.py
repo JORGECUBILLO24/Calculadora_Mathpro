@@ -8,54 +8,67 @@ from Logica_simbolica_inferencial import LogicaSimbolicaTeclado
 from Conjuntos import CalculadoraConjuntos
 from Funciones import CalculadoraFunciones
 from Limites import CalculadoraLimites
-from  Matrices import VentanaMatrices  # <-- Nueva clase integrada
+from Matrices import VentanaMatrices
 
 class MenuElegante(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Menú Principal Mathpro")
         self.setGeometry(200, 100, 1200, 700)
+        self.tema = "claro"
+        self.idioma = "Español"
+        self.orientacion_barra = "horizontal"
         self.setStyleSheet("background-color: #F0F2F5; color: #000000;")
 
-        # Layout principal
-        layout_principal = QHBoxLayout()
-        layout_principal.setSpacing(0)
-        layout_principal.setContentsMargins(0, 0, 0, 0)
+        # ------------------- Layout principal -------------------
+        self.layout_principal = QVBoxLayout()
+        self.layout_principal.setSpacing(0)
+        self.layout_principal.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.layout_principal)
 
-        # ------------------- COLUMNA IZQUIERDA (MENÚ) -------------------
-        layout_menu = QVBoxLayout()
-        layout_menu.setSpacing(0)
-        layout_menu.setContentsMargins(0, 0, 0, 0)
+        # ------------------- Layout de menú -------------------
+        self.layout_menu = QVBoxLayout()
+        self.layout_menu.setSpacing(5)
+        self.layout_menu.setContentsMargins(0, 0, 0, 0)
+        self.layout_menu.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        botones_info = [
+        self.menu_widget = QWidget()
+        self.menu_widget.setLayout(self.layout_menu)
+        self.menu_widget.setFixedWidth(250)
+
+        # ------------------- Botones -------------------
+        self.botones_info = [
             ("📘 Matemática Básica", ["Logica simbolica y inferencial", "Conjuntos", "Funciones"]),
             ("📗 Cálculo", ["Límites", "Derivadas"]),
             ("📙 Cálculo II", ["Integrales indefinidas", "Integrales definidas"]),
-            ("📐 Álgebra Lineal", ["Vectores", "Determinantes", "Matrices",]),
-            ("⚙️ Configuración", ["Preferencias", "Temas", "Acerca de"]),
+            ("📐 Álgebra Lineal", ["Vectores", "Determinantes", "Matrices"]),
         ]
-
-        for texto, opciones in botones_info:
+        self.botones = []
+        for texto, opciones in self.botones_info:
             boton = self.crear_boton(texto, opciones)
-            layout_menu.addWidget(boton)
+            self.botones.append((boton, opciones))
+            self.layout_menu.addWidget(boton)
 
-        layout_principal.addLayout(layout_menu, 2)
+        # Botón configuración
+        self.boton_config = QPushButton("⚙️ Configuración")
+        self.boton_config.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.boton_config.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.boton_config.setFixedHeight(50)
+        self.estilo_boton_y_menu(self.boton_config, ["Cambiar orientación barra", "Cambiar idioma", "Cambiar tema"])
+        self.layout_menu.addWidget(self.boton_config)
 
-        # ------------------- SEPARADOR -------------------
-        linea_separadora = QLabel()
-        linea_separadora.setFixedWidth(2)
-        linea_separadora.setStyleSheet("background-color: #CCCCCC; color: #000000;")
-        layout_principal.insertWidget(1, linea_separadora)
+        # ------------------- Barra horizontal -------------------
+        self.barra_horizontal_widget = QWidget()
+        self.barra_horizontal_layout = QHBoxLayout(self.barra_horizontal_widget)
+        self.barra_horizontal_layout.setSpacing(0)
+        self.barra_horizontal_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ------------------- COLUMNA DERECHA (CONTENIDO) -------------------
-        self.layout_derecha = QVBoxLayout()
-        self.layout_derecha.setContentsMargins(0, 0, 0, 0)
-
+        # ------------------- Contenido -------------------
         self.contenido_widget = QWidget()
-        self.contenido_layout = QVBoxLayout()
+        self.contenido_layout = QVBoxLayout(self.contenido_widget)
         self.contenido_layout.setContentsMargins(0, 0, 0, 0)
-        self.contenido_widget.setLayout(self.contenido_layout)
-        self.layout_derecha.addWidget(self.contenido_widget)
+        self.contenido_layout.setSpacing(0)
+        self.contenido_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Etiqueta de fecha y hora
         self.etiqueta_fecha = QLabel()
@@ -65,12 +78,8 @@ class MenuElegante(QWidget):
             font-size: 18px; 
             color: #000000;
             padding: 10px;
-            text-shadow: 1px 1px 2px #AAAAAA;
         """)
-        self.layout_derecha.addWidget(self.etiqueta_fecha)
-
-        layout_principal.addLayout(self.layout_derecha, 5)
-        self.setLayout(layout_principal)
+        self.contenido_layout.addWidget(self.etiqueta_fecha)
 
         # Timer de hora y fecha
         temporizador = QTimer(self)
@@ -78,47 +87,25 @@ class MenuElegante(QWidget):
         temporizador.start(1000)
         self.actualizar_hora()
 
+        # Aplicar orientación inicial
+        self.cambiar_orientacion_barra("horizontal")
+
     # ------------------- Crear botón con menú -------------------
     def crear_boton(self, texto, opciones):
         boton = QPushButton(texto)
-        boton.setStyleSheet("""
-            QPushButton {
-                background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #00A8CC, stop:1 #007B8A);
-                color: white;
-                font-weight: bold;
-                font-size: 22px;
-                padding: 40px;
-                border-radius: 0px;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #00CED1;
-            }
-            QPushButton::menu-indicator {
-                image: none;
-            }
-        """)
         boton.setCursor(Qt.CursorShape.PointingHandCursor)
-        boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        boton.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        boton.setFixedHeight(50)
+        self.estilo_boton_y_menu(boton, opciones)
+        return boton
 
+    # ------------------- Estilo botón + reconstrucción de menú -------------------
+    def estilo_boton_y_menu(self, boton, opciones):
+        self.estilo_boton(boton)
+        if boton.menu():
+            boton.menu().deleteLater()
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border-radius: 10px;
-                border: 1px solid #AAAAAA;
-                padding: 5px;
-                font-size: 15px;
-            }
-            QMenu::item {
-                color: #000000;
-                padding: 8px 25px;
-            }
-            QMenu::item:selected {
-                background-color: #00A8CC;
-                color: black;
-            }
-        """)
+        self.estilo_menu(menu)
         for opcion in opciones:
             action = menu.addAction(opcion)
             if opcion == "Logica simbolica y inferencial":
@@ -131,47 +118,179 @@ class MenuElegante(QWidget):
                 action.triggered.connect(self.mostrar_limites)
             elif opcion == "Matrices":
                 action.triggered.connect(self.mostrar_eliminacion)
-
+            elif opcion == "Cambiar orientación barra":
+                action.triggered.connect(self.toggle_orientacion)
+            elif opcion == "Cambiar idioma":
+                action.triggered.connect(self.toggle_idioma)
+            elif opcion == "Cambiar tema":
+                action.triggered.connect(self.toggle_tema)
         boton.setMenu(menu)
-        return boton
 
-    # ------------------- Métodos para mostrar clases -------------------
-    def mostrar_logica(self):
-        self.limpiar_contenido()
-        widget = LogicaSimbolicaTeclado()
+    # ------------------- Estilo de botón -------------------
+    def estilo_boton(self, boton):
+        if self.tema == "oscuro":
+            boton.setStyleSheet("""
+                QPushButton {
+                    background-color: #444444;
+                    color: white;
+                    font-weight: bold;
+                    font-size: 16px;
+                    border-radius: 5px;
+                    margin: 2px;
+                }
+                QPushButton:hover {
+                    background-color: #666666;
+                }
+            """)
+        else:
+            boton.setStyleSheet("""
+                QPushButton {
+                    background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #00A8CC, stop:1 #007B8A);
+                    color: white;
+                    font-weight: bold;
+                    font-size: 16px;
+                    border-radius: 5px;
+                    margin: 2px;
+                }
+                QPushButton:hover {
+                    background-color: #00CED1;
+                }
+            """)
+
+    # ------------------- Estilo de menú -------------------
+    def estilo_menu(self, menu):
+        if self.tema == "oscuro":
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #444444;
+                    border-radius: 10px;
+                    border: 1px solid #AAAAAA;
+                    padding: 5px;
+                    font-size: 15px;
+                    color: white;
+                }
+                QMenu::item {
+                    color: white;
+                    padding: 8px 25px;
+                }
+                QMenu::item:selected {
+                    background-color: #666666;
+                    color: white;
+                }
+            """)
+        else:
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #FFFFFF;
+                    border-radius: 10px;
+                    border: 1px solid #AAAAAA;
+                    padding: 5px;
+                    font-size: 15px;
+                    color: black;
+                }
+                QMenu::item {
+                    color: black;
+                    padding: 8px 25px;
+                }
+                QMenu::item:selected {
+                    background-color: #00A8CC;
+                    color: black;
+                }
+            """)
+
+    # ------------------- Toggle -------------------
+    def toggle_orientacion(self):
+        nueva = "vertical" if self.orientacion_barra == "horizontal" else "horizontal"
+        self.cambiar_orientacion_barra(nueva)
+
+    def toggle_idioma(self):
+        self.idioma = "Inglés" if self.idioma == "Español" else "Español"
+
+    def toggle_tema(self):
+        nueva = "oscuro" if self.tema == "claro" else "claro"
+        self.cambiar_tema(nueva)
+
+    # ------------------- Cambiar tema -------------------
+    def cambiar_tema(self, tema):
+        self.tema = tema
+        if tema == "oscuro":
+            self.setStyleSheet("background-color: #2E2E2E; color: white;")
+            self.etiqueta_fecha.setStyleSheet("font-weight:bold; font-size:18px; color:white; padding:10px;")
+        else:
+            self.setStyleSheet("background-color: #F0F2F5; color: black;")
+            self.etiqueta_fecha.setStyleSheet("font-weight:bold; font-size:18px; color:black; padding:10px;")
+        # Reconstruir todos los botones y sus menús
+        for boton, opciones in self.botones:
+            self.estilo_boton_y_menu(boton, opciones)
+        # Reconstruir botón de configuración
+        self.estilo_boton_y_menu(self.boton_config, ["Cambiar orientación barra", "Cambiar idioma", "Cambiar tema"])
+
+    # ------------------- Cambiar orientación -------------------
+    def cambiar_orientacion_barra(self, orientacion):
+        self.orientacion_barra = orientacion.lower()
+        while self.layout_principal.count():
+            item = self.layout_principal.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+            elif item.layout():
+                layout = item.layout()
+                while layout.count():
+                    child = layout.takeAt(0)
+                    if child.widget():
+                        child.widget().setParent(None)
+
+        if self.orientacion_barra == "horizontal":
+            for i in reversed(range(self.layout_menu.count())):
+                w = self.layout_menu.itemAt(i).widget()
+                if w:
+                    self.layout_menu.removeWidget(w)
+                    w.setParent(None)
+                    self.barra_horizontal_layout.addWidget(w)
+            layout_final = QVBoxLayout()
+            layout_final.setContentsMargins(0,0,0,0)
+            layout_final.setSpacing(0)
+            layout_final.addWidget(self.barra_horizontal_widget)
+            layout_final.addWidget(self.contenido_widget)
+            self.layout_principal.addLayout(layout_final)
+        else:
+            for i in reversed(range(self.barra_horizontal_layout.count())):
+                w = self.barra_horizontal_layout.itemAt(i).widget()
+                if w:
+                    self.barra_horizontal_layout.removeWidget(w)
+                    w.setParent(None)
+                    self.layout_menu.addWidget(w)
+            self.menu_widget.setLayout(self.layout_menu)
+            layout_final = QHBoxLayout()
+            layout_final.setContentsMargins(0,0,0,0)
+            layout_final.setSpacing(0)
+            layout_final.addWidget(self.menu_widget)
+            layout_final.addWidget(self.contenido_widget)
+            self.layout_principal.addLayout(layout_final)
+
+    # ------------------- Mostrar widgets -------------------
+    def mostrar_widget(self, widget):
+        for i in reversed(range(self.contenido_layout.count())):
+            w = self.contenido_layout.itemAt(i).widget()
+            if w:
+                w.setParent(None)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.contenido_layout.addWidget(widget)
+        self.contenido_layout.addWidget(self.etiqueta_fecha)
+
+    def mostrar_logica(self):
+        self.mostrar_widget(LogicaSimbolicaTeclado())
 
     def mostrar_conjuntos(self):
-        self.limpiar_contenido()
-        widget = CalculadoraConjuntos()
-        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.contenido_layout.addWidget(widget)
+        self.mostrar_widget(CalculadoraConjuntos())
 
     def mostrar_funciones(self):
-        self.limpiar_contenido()
-        widget = CalculadoraFunciones()
-        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.contenido_layout.addWidget(widget)
+        self.mostrar_widget(CalculadoraFunciones())
 
     def mostrar_limites(self):
-        self.limpiar_contenido()
-        widget = CalculadoraLimites()
-        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.contenido_layout.addWidget(widget)
+        self.mostrar_widget(CalculadoraLimites())
 
     def mostrar_eliminacion(self):
-        self.limpiar_contenido()
-        widget = VentanaMatrices()
-        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.contenido_layout.addWidget(widget)
-
-    # ------------------- Limpiar contenido -------------------
-    def limpiar_contenido(self):
-        for i in reversed(range(self.contenido_layout.count())):
-            widget_ant = self.contenido_layout.itemAt(i).widget()
-            if widget_ant is not None:
-                widget_ant.setParent(None)
+        self.mostrar_widget(VentanaMatrices())
 
     # ------------------- Actualizar hora y fecha -------------------
     def actualizar_hora(self):
@@ -179,9 +298,10 @@ class MenuElegante(QWidget):
         hora = QTime.currentTime().toString("hh:mm:ss AP")
         self.etiqueta_fecha.setText(f"{fecha} | {hora}")
 
-
+# ------------------- MAIN -------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     ventana = MenuElegante()
     ventana.show()
     sys.exit(app.exec())
+
