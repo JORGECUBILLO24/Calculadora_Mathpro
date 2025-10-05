@@ -3,4 +3,5 @@ sympy
 numpy
 matplotlib
 matplotlib-venn
-customtkinter
+
+
