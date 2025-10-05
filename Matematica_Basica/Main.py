@@ -7,3 +7,4 @@ if __name__ == "__main__":
     ventana = MenuElegante()
     ventana.show()
     sys.exit(app.exec())
+
