@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
-    QComboBox, QTableWidget, QTableWidgetItem, QTextEdit, QApplication
+    QComboBox, QTableWidget, QTableWidgetItem, QTextEdit, QApplication,
+    QSizePolicy, QHeaderView
 )
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt
@@ -22,21 +23,32 @@ class VentanaMatrices(QWidget):
 
         # --- Dimensiones ---
         input_layout = QHBoxLayout()
+        input_layout.setSpacing(20)
 
         # Matriz A
         self.a_widget = QWidget()
         a_layout = QVBoxLayout(self.a_widget)
-        a_label = QLabel("Matriz A"); a_label.setFont(font_label); a_label.setStyleSheet("color: #000000;")
+        a_label = QLabel("Matriz A")
+        a_label.setFont(font_label)
+        a_label.setStyleSheet("color: #000000;")
         a_layout.addWidget(a_label)
         filas_a_layout = QHBoxLayout()
-        filas_a_label = QLabel("Filas"); filas_a_label.setFont(QFont("Segoe UI", 12)); filas_a_label.setFixedWidth(70)
-        self.filas_A_input = QLineEdit("3"); self.filas_A_input.setFixedWidth(60); self.filas_A_input.setFont(font_input)
+        filas_a_label = QLabel("Filas")
+        filas_a_label.setFont(QFont("Segoe UI", 12))
+        filas_a_label.setFixedWidth(70)
+        self.filas_A_input = QLineEdit("3")
+        self.filas_A_input.setFixedWidth(60)
+        self.filas_A_input.setFont(font_input)
         filas_a_layout.addWidget(filas_a_label)
         filas_a_layout.addWidget(self.filas_A_input)
         a_layout.addLayout(filas_a_layout)
         columnas_a_layout = QHBoxLayout()
-        columnas_a_label = QLabel("Columnas"); columnas_a_label.setFont(QFont("Segoe UI", 12)); columnas_a_label.setFixedWidth(70)
-        self.columnas_A_input = QLineEdit("3"); self.columnas_A_input.setFixedWidth(60); self.columnas_A_input.setFont(font_input)
+        columnas_a_label = QLabel("Columnas")
+        columnas_a_label.setFont(QFont("Segoe UI", 12))
+        columnas_a_label.setFixedWidth(70)
+        self.columnas_A_input = QLineEdit("3")
+        self.columnas_A_input.setFixedWidth(60)
+        self.columnas_A_input.setFont(font_input)
         columnas_a_layout.addWidget(columnas_a_label)
         columnas_a_layout.addWidget(self.columnas_A_input)
         a_layout.addLayout(columnas_a_layout)
@@ -44,62 +56,87 @@ class VentanaMatrices(QWidget):
         # Matriz B
         self.b_widget = QWidget()
         b_layout = QVBoxLayout(self.b_widget)
-        b_label = QLabel("Matriz B"); b_label.setFont(font_label); b_label.setStyleSheet("color: #000000;")
+        b_label = QLabel("Matriz B")
+        b_label.setFont(font_label)
+        b_label.setStyleSheet("color: #000000;")
         b_layout.addWidget(b_label)
         filas_b_layout = QHBoxLayout()
-        filas_b_label = QLabel("Filas"); filas_b_label.setFont(QFont("Segoe UI", 12)); filas_b_label.setFixedWidth(70)
-        self.filas_B_input = QLineEdit("3"); self.filas_B_input.setFixedWidth(60); self.filas_B_input.setFont(font_input)
+        filas_b_label = QLabel("Filas")
+        filas_b_label.setFont(QFont("Segoe UI", 12))
+        filas_b_label.setFixedWidth(70)
+        self.filas_B_input = QLineEdit("3")
+        self.filas_B_input.setFixedWidth(60)
+        self.filas_B_input.setFont(font_input)
         filas_b_layout.addWidget(filas_b_label)
         filas_b_layout.addWidget(self.filas_B_input)
         b_layout.addLayout(filas_b_layout)
         columnas_b_layout = QHBoxLayout()
-        columnas_b_label = QLabel("Columnas"); columnas_b_label.setFont(QFont("Segoe UI", 12)); columnas_b_label.setFixedWidth(70)
-        self.columnas_B_input = QLineEdit("3"); self.columnas_B_input.setFixedWidth(60); self.columnas_B_input.setFont(font_input)
+        columnas_b_label = QLabel("Columnas")
+        columnas_b_label.setFont(QFont("Segoe UI", 12))
+        columnas_b_label.setFixedWidth(70)
+        self.columnas_B_input = QLineEdit("3")
+        self.columnas_B_input.setFixedWidth(60)
+        self.columnas_B_input.setFont(font_input)
         columnas_b_layout.addWidget(columnas_b_label)
         columnas_b_layout.addWidget(self.columnas_B_input)
         b_layout.addLayout(columnas_b_layout)
 
-        input_layout.addWidget(self.a_widget)
-        input_layout.addSpacing(40)
-        input_layout.addWidget(self.b_widget)
-        input_layout.addStretch()
+        # Añadir con stretch para que A y B se distribuyan proporcionalmente
+        self.a_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.b_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        input_layout.addWidget(self.a_widget, 1)
+        input_layout.addWidget(self.b_widget, 1)
 
         # --- Matriz A y B ---
         matrices_layout = QHBoxLayout()
-        self.tabla_A = QTableWidget(); self.config_tabla(self.tabla_A, "Matriz A")
-        self.tabla_B = QTableWidget(); self.config_tabla(self.tabla_B, "Matriz B")
-        matrices_layout.addWidget(self.tabla_A)
-        matrices_layout.addWidget(self.tabla_B)
+        matrices_layout.setSpacing(12)
+        self.tabla_A = QTableWidget()
+        self.config_tabla(self.tabla_A, "Matriz A")
+        self.tabla_B = QTableWidget()
+        self.config_tabla(self.tabla_B, "Matriz B")
+        # Añadir con stretch para que ambas tablas ocupen el mismo espacio disponible
+        matrices_layout.addWidget(self.tabla_A, 1)
+        matrices_layout.addWidget(self.tabla_B, 1)
 
         # --- Botones ---
         botones_layout = QHBoxLayout()
+        botones_layout.setContentsMargins(0, 10, 0, 10)
+        botones_layout.setSpacing(10)
         self.operacion_combo = QComboBox()
         self.operacion_combo.addItems(["Suma", "Resta", "Multiplicacion", "Gauss", "Gauss-Jordan"])
         self.operacion_combo.setFont(font_input)
-        self.operacion_combo.setFixedWidth(220)
-        self.operacion_combo.setStyleSheet("background-color:#1E88E5; color:white; border-radius:15px; padding:8px;")
+        self.operacion_combo.setFixedWidth(240)
+        self.operacion_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.operacion_combo.setStyleSheet("background-color:#1E88E5; color:white; border-radius:12px; padding:6px;")
 
         self.btn_ejecutar = QPushButton("Ejecutar operación")
         self.btn_ejecutar.setFont(font_btn)
-        self.btn_ejecutar.setStyleSheet("background-color:#43A047; color:white; border-radius:15px; padding:8px;")
+        self.btn_ejecutar.setStyleSheet("background-color:#43A047; color:white; border-radius:12px; padding:8px;")
         self.btn_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_ejecutar.setMinimumHeight(40)
+        self.btn_ejecutar.setFixedWidth(220)
 
-        botones_layout.addWidget(self.operacion_combo)
-        botones_layout.addWidget(self.btn_ejecutar)
+        # Distribuir: combo al inicio y boton al final con espacio flexible
+        botones_layout.addWidget(self.operacion_combo, 0)
+        botones_layout.addStretch(1)
+        botones_layout.addWidget(self.btn_ejecutar, 0)
 
         # --- Procedimiento ---
         self.procedimiento_text = QTextEdit()
         self.procedimiento_text.setFont(QFont("Consolas", 11))
         self.procedimiento_text.setPlaceholderText("Procedimiento")
         self.procedimiento_text.setMinimumHeight(250)
+        self.procedimiento_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.procedimiento_text.setStyleSheet("background-color:white; color: #000000; border:2px solid #B0BEC5; border-radius:12px;")
 
         # Layout principal
         layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.addLayout(input_layout)
         layout.addLayout(matrices_layout)
         layout.addLayout(botones_layout)
-        layout.addWidget(self.procedimiento_text)
+        layout.addWidget(self.procedimiento_text, 1)
         self.setLayout(layout)
 
         # Conexiones
@@ -109,6 +146,10 @@ class VentanaMatrices(QWidget):
         self.filas_B_input.editingFinished.connect(self.actualizar_dimensiones)
         self.columnas_B_input.editingFinished.connect(self.actualizar_dimensiones)
         self.operacion_combo.currentTextChanged.connect(self.toggle_matrizB)
+
+        # Inicializar tablas con las dimensiones por defecto y estado de B
+        self.actualizar_dimensiones()
+        self.toggle_matrizB()
 
     # =================== CONFIG TABLAS ===================
     def config_tabla(self, tabla, titulo):
@@ -120,13 +161,23 @@ class VentanaMatrices(QWidget):
         tabla.setMinimumSize(220, 180)
         tabla.setCornerButtonEnabled(False)
         tabla.setToolTip(titulo)
-        
-        # <-- Agrega estas líneas para hacer las celdas más grandes:
-        tabla.horizontalHeader().setDefaultSectionSize(80)  # Ancho de columnas
+        # Preferir que las columnas se estiren para usar el espacio disponible
+        tabla.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         tabla.verticalHeader().setDefaultSectionSize(60)    # Alto de filas
-        tabla.setColumnWidth(0, 80)  # Ancho específico para primera columna
-        tabla.setColumnWidth(1, 80)  # Ancho específico para segunda columna  
-        tabla.setColumnWidth(2, 80)  # Ancho específico para tercera columna
+
+        # Rellenar con items "0" centrados
+        self._rellenar_celdas_con_ceros(tabla)
+
+    def _rellenar_celdas_con_ceros(self, tabla):
+        filas, cols = tabla.rowCount(), tabla.columnCount()
+        for i in range(filas):
+            for j in range(cols):
+                item = tabla.item(i, j)
+                if item is None:
+                    item = QTableWidgetItem("0")
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    tabla.setItem(i, j, item)
 
     def actualizar_dimensiones(self):
         try:
@@ -141,21 +192,22 @@ class VentanaMatrices(QWidget):
             self.tabla_A.setColumnCount(cols_A)
             self.tabla_A.setHorizontalHeaderLabels([f"C{j+1}" for j in range(cols_A)])
             self.tabla_A.setVerticalHeaderLabels([f"F{i+1}" for i in range(filas_A)])
-            self.tabla_A.horizontalHeader().setDefaultSectionSize(80)
+            # Hacer que las columnas se estiren automáticamente
+            self.tabla_A.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             self.tabla_A.verticalHeader().setDefaultSectionSize(60)
-            for j in range(cols_A):
-                self.tabla_A.setColumnWidth(j, 80)
+            self._rellenar_celdas_con_ceros(self.tabla_A)
 
             # For tabla_B
             self.tabla_B.setRowCount(filas_B)
             self.tabla_B.setColumnCount(cols_B)
             self.tabla_B.setHorizontalHeaderLabels([f"C{j+1}" for j in range(cols_B)])
             self.tabla_B.setVerticalHeaderLabels([f"F{i+1}" for i in range(filas_B)])
-            self.tabla_B.horizontalHeader().setDefaultSectionSize(80)
+            # Hacer que las columnas se estiren automáticamente
+            self.tabla_B.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             self.tabla_B.verticalHeader().setDefaultSectionSize(60)
-            for j in range(cols_B):
-                self.tabla_B.setColumnWidth(j, 80)
-        except:
+            self._rellenar_celdas_con_ceros(self.tabla_B)
+
+        except Exception:
             return
 
     def toggle_matrizB(self):
@@ -175,18 +227,24 @@ class VentanaMatrices(QWidget):
             fila = []
             for j in range(cols):
                 item = tabla.item(i, j)
-                val = item.text().strip() if item else "0"
+                val = item.text().strip() if item and item.text() else "0"
                 try:
-                    fila.append(Fraction(val if val else "0"))
-                except:
+                    # Acepta formas: "3", "1/2", "2.5"
+                    fila.append(Fraction(val))
+                except Exception:
+                    # Si no se puede convertir, poner 0
                     fila.append(Fraction(0))
             matriz.append(fila)
         return matriz
 
     def mostrar_matriz(self, M):
+        def fmt(x: Fraction):
+            if x.denominator == 1:
+                return str(x.numerator)
+            return str(x)  # muestra como 'a/b'
         texto = ""
         for fila in M:
-            texto += "[ " + "  ".join(str(x) for x in fila) + " ]\n"
+            texto += "[ " + "  ".join(fmt(x) for x in fila) + " ]\n"
         return texto
 
     # =================== GAUSS & GAUSS-JORDAN ===================
@@ -197,8 +255,9 @@ class VentanaMatrices(QWidget):
         row = 0
         pivots = []
 
-        for col in range(m-1):  # suponer última columna es RHS si es sistema
-            # seleccionar pivote
+        # iterar columnas (si se supone último col es RHS, iterar hasta m-1)
+        for col in range(m - 1):  # si no es sistema con RHS, ajustar externamente
+            # seleccionar pivote (primer fila no nula en o debajo de 'row')
             sel = None
             for r in range(row, n):
                 if A[r][col] != 0:
@@ -209,11 +268,12 @@ class VentanaMatrices(QWidget):
             if sel != row:
                 A[row], A[sel] = A[sel], A[row]
                 pasos.append(f"Intercambio F{row+1} ↔ F{sel+1}\n{self.mostrar_matriz(A)}")
-            # normalizar pivote
+            # normalizar pivote a 1 (si se desea). Conservamos la normalización para RREF
             pivot = A[row][col]
             if pivot != 1:
+                # dividir toda la fila por pivot (si pivot=0 ya filtrado)
                 A[row] = [x / pivot for x in A[row]]
-                pasos.append(f"F{row+1} ÷ {pivot}\n{self.mostrar_matriz(A)}")
+                pasos.append(f"F{row+1} ÷ ({pivot})\n{self.mostrar_matriz(A)}")
             # eliminar debajo
             for r in range(row+1, n):
                 factor = A[r][col]
@@ -221,16 +281,25 @@ class VentanaMatrices(QWidget):
                     A[r] = [A[r][j] - factor*A[row][j] for j in range(m)]
                     pasos.append(f"F{r+1} → F{r+1} - ({factor})·F{row+1}\n{self.mostrar_matriz(A)}")
             pivots.append(col)
-            row +=1
+            row += 1
+            if row == n:
+                break
         return pasos, A, pivots
 
     def eliminacionPivote(self, M, pivots):
+        """
+        Elimina hacia arriba para obtener RREF. pivots es la lista de índices de columna
+        donde se encontraron pivotes; el orden de pivots corresponde a las filas
+        0..len(pivots)-1 después de la eliminación hacia adelante.
+        """
         pasos = []
         A = copy.deepcopy(M)
         n, m = len(A), len(A[0])
-        # eliminar arriba de pivotes
+
+        # Recorrer pivotes desde el último pivot-row hacia el primero
         for pr in reversed(range(len(pivots))):
-            col = pivots[pr]
+            col = pivots[pr]  # columna del pivot correspondiente a la fila 'pr'
+            # eliminar términos por encima de la fila pr
             for r in range(pr):
                 factor = A[r][col]
                 if factor != 0:
@@ -240,10 +309,10 @@ class VentanaMatrices(QWidget):
 
     def analizar_sistema(self, A, pivots):
         n, m = len(A), len(A[0])
-        NV = m-1
-        # revisar inconsistencias
+        NV = m - 1  # suponer última columna RHS
+        # revisar inconsistencias (fila 0...NV-1 son coef, último es RHS)
         for r in range(n):
-            if all(A[r][c]==0 for c in range(NV)) and A[r][-1]!=0:
+            if all(A[r][c] == 0 for c in range(NV)) and A[r][-1] != 0:
                 return "⚠️ Sistema INCONSISTENTE → No tiene solución."
 
         # variables libres
@@ -251,23 +320,25 @@ class VentanaMatrices(QWidget):
         if libres:
             # parametrizar
             ecuaciones = []
+            # para cada pivot (fila r corresponde a pivot en columna pivots[r])
             for r, c in enumerate(pivots):
                 rhs = A[r][-1]
                 expr = f"{rhs}"
                 for l in libres:
                     coef = A[r][l]
                     if coef != 0:
-                        sign = " - " if coef>0 else " + "
+                        # si coef positivo restamos coef·t  (porque x_pivot - coef·t = rhs)
+                        sign = " - " if coef > 0 else " + "
                         expr += f"{sign}{abs(coef)}·t{libres.index(l)+1}"
                 ecuaciones.append(f"x{c+1} = {expr}")
-            for idx,l in enumerate(libres):
+            for idx, l in enumerate(libres):
                 ecuaciones.append(f"x{l+1} = t{idx+1}")
             texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\nVariables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\nSolución paramétrica:\n" + "\n".join(ecuaciones)
             return texto
         else:
-            # solución única
+            # solución única si hay pivotes para todas las variables
             soluciones = [None]*NV
-            for r,c in enumerate(pivots):
+            for r, c in enumerate(pivots):
                 soluciones[c] = A[r][-1]
             texto = "✅ Sistema CONSISTENTE → Solución única:\n" + "\n".join(f"x{i+1} = {soluciones[i]}" for i in range(NV))
             return texto
@@ -282,10 +353,14 @@ class VentanaMatrices(QWidget):
     def ejecutar_operacion(self):
         op = self.operacion_combo.currentText()
         A = self.leer_tabla(self.tabla_A)
-        B = self.leer_tabla(self.tabla_B)
+        # Si tabla_B está oculta, no la leemos (usualmente en Gauss/Gauss-Jordan)
+        B = self.leer_tabla(self.tabla_B) if self.tabla_B.isVisible() else None
 
         try:
             if op == "Suma":
+                if B is None:
+                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la suma.")
+                    return
                 if len(A) != len(B) or len(A[0]) != len(B[0]):
                     self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
                     return
@@ -298,6 +373,9 @@ class VentanaMatrices(QWidget):
                 self.procedimiento_text.setPlainText(texto)
 
             elif op == "Resta":
+                if B is None:
+                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la resta.")
+                    return
                 if len(A) != len(B) or len(A[0]) != len(B[0]):
                     self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
                     return
@@ -310,6 +388,9 @@ class VentanaMatrices(QWidget):
                 self.procedimiento_text.setPlainText(texto)
 
             elif op == "Multiplicacion":
+                if B is None:
+                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la multiplicación.")
+                    return
                 if len(A[0]) != len(B):
                     self.procedimiento_text.setPlainText("Error: columnas(A) ≠ filas(B).")
                     return
@@ -325,6 +406,7 @@ class VentanaMatrices(QWidget):
                 self.procedimiento_text.setPlainText(texto)
 
             elif op == "Gauss":
+                # Se asume que A corresponde a una matriz aumentada si hay RHS.
                 pasos, A_escalon, pivots = self.eliminacion_adelante(A)
                 texto = "\n\n".join(pasos) + "\n\nMatriz resultante (escalonada):\n" + self.mostrar_matriz(A_escalon)
                 texto += "\n\nDiagnóstico:\n" + self.analizar_sistema(A_escalon, pivots)
