@@ -3,8 +3,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QTableWidget, QTableWidgetItem, QTextEdit, QApplication,
     QSizePolicy, QHeaderView
 )
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtCore import Qt, QTimer
 from fractions import Fraction
 import sys
 import copy
@@ -115,10 +115,18 @@ class VentanaMatrices(QWidget):
         self.btn_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ejecutar.setMinimumHeight(40)
         self.btn_ejecutar.setFixedWidth(220)
+        # Botón para limpiar matrices y procedimiento
+        self.btn_limpiar = QPushButton("Limpiar matrices")
+        self.btn_limpiar.setFont(font_btn)
+        self.btn_limpiar.setStyleSheet("background-color:#E53935; color:white; border-radius:12px; padding:8px;")
+        self.btn_limpiar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_limpiar.setMinimumHeight(40)
+        self.btn_limpiar.setFixedWidth(180)
 
         # Distribuir: combo al inicio y boton al final con espacio flexible
         botones_layout.addWidget(self.operacion_combo, 0)
         botones_layout.addStretch(1)
+        botones_layout.addWidget(self.btn_limpiar, 0)
         botones_layout.addWidget(self.btn_ejecutar, 0)
 
         # --- Procedimiento ---
@@ -141,6 +149,7 @@ class VentanaMatrices(QWidget):
 
         # Conexiones
         self.btn_ejecutar.clicked.connect(self.ejecutar_operacion)
+        self.btn_limpiar.clicked.connect(self.limpiar_matrices)
         self.filas_A_input.editingFinished.connect(self.actualizar_dimensiones)
         self.columnas_A_input.editingFinished.connect(self.actualizar_dimensiones)
         self.filas_B_input.editingFinished.connect(self.actualizar_dimensiones)
@@ -219,6 +228,32 @@ class VentanaMatrices(QWidget):
             self.b_widget.show()
             self.tabla_B.show()
 
+    def mostrar_procedimiento(self, texto: str):
+        """Setea el texto del procedimiento y fuerza el scroll al final de forma confiable.
+
+        Usa un pequeño retraso (QTimer.singleShot) para ejecutar el desplazamiento después
+        de que Qt haya hecho el repaint y calculado los tamaños del widget.
+        """
+        # Actualizar el texto inmediatamente
+        self.procedimiento_text.setPlainText(texto)
+
+        # Callback que mueve el cursor al final y fuerza a que la barra esté al máximo
+        def _scroll_to_end():
+            try:
+                cursor = self.procedimiento_text.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                self.procedimiento_text.setTextCursor(cursor)
+                self.procedimiento_text.ensureCursorVisible()
+                # Fallback adicional: forzar el scrollbar vertical al máximo
+                sb = self.procedimiento_text.verticalScrollBar()
+                sb.setValue(sb.maximum())
+            except Exception:
+                pass
+
+        # Usar pequeños delays para dar tiempo al layout; intentos a 50ms y 200ms
+        QTimer.singleShot(50, _scroll_to_end)
+        QTimer.singleShot(200, _scroll_to_end)
+
     # =================== UTILIDADES ===================
     def leer_tabla(self, tabla):
         filas, cols = tabla.rowCount(), tabla.columnCount()
@@ -246,6 +281,29 @@ class VentanaMatrices(QWidget):
         for fila in M:
             texto += "[ " + "  ".join(fmt(x) for x in fila) + " ]\n"
         return texto
+
+    def limpiar_matrices(self):
+        """Pone todas las celdas de las tablas en '0' y limpia el área de procedimiento."""
+        try:
+            for tabla in (self.tabla_A, self.tabla_B):
+                filas, cols = tabla.rowCount(), tabla.columnCount()
+                for i in range(filas):
+                    for j in range(cols):
+                        item = tabla.item(i, j)
+                        if item is None:
+                            item = QTableWidgetItem("0")
+                            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            tabla.setItem(i, j, item)
+                        else:
+                            item.setText("0")
+        except Exception:
+            pass
+
+        # Limpiar procedimiento
+        try:
+            self.procedimiento_text.clear()
+        except Exception:
+            pass
 
     # =================== GAUSS & GAUSS-JORDAN ===================
     def eliminacion_adelante(self, M):
@@ -309,39 +367,77 @@ class VentanaMatrices(QWidget):
 
     def analizar_sistema(self, A, pivots):
         n, m = len(A), len(A[0])
-        NV = m - 1  # suponer última columna RHS
-        # revisar inconsistencias (fila 0...NV-1 son coef, último es RHS)
+
+        # Se asume que la última columna es el término independiente (RHS)
+        if m < 2:
+            return "⚠️ Matriz inválida para análisis (no hay columna RHS)."
+        NV = m - 1
+
+        # revisar inconsistencia: fila con todos coeficientes 0 y RHS distinto de 0
         for r in range(n):
             if all(A[r][c] == 0 for c in range(NV)) and A[r][-1] != 0:
                 return "⚠️ Sistema INCONSISTENTE → No tiene solución."
 
-        # variables libres
-        libres = [i for i in range(NV) if i not in pivots]
+        # Recalcular pivotes a partir de la matriz A (útil si A ya es RREF)
+        pivots_from_A = []
+        for r in range(n):
+            for c in range(NV):
+                if A[r][c] != 0:
+                    if c not in pivots_from_A:
+                        pivots_from_A.append(c)
+                    break
+
+        # Usar pivotes detectados en A si hay, si no usar la lista pasada
+        pivots_used = pivots_from_A if pivots_from_A else pivots
+
+        # variables libres: índices de columnas que no son pivote
+        libres = [i for i in range(NV) if i not in pivots_used]
+
+        # Caso: no hay pivotes -> todas las variables son libres
+        if len(pivots_used) == 0:
+            if NV == 0:
+                return "✅ Sistema CONSISTENTE → Sin variables (trivial)."
+            texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\n"
+            texto += "Variables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\n"
+            texto += "Solución paramétrica:\n"
+            for idx, l in enumerate(libres):
+                texto += f"x{l+1} = t{idx+1}\n"
+            return texto
+
+        # Si hay variables libres, construir solución paramétrica
         if libres:
-            # parametrizar
             ecuaciones = []
-            # para cada pivot (fila r corresponde a pivot en columna pivots[r])
-            for r, c in enumerate(pivots):
+            free_to_t = {l: idx+1 for idx, l in enumerate(libres)}
+
+            # Para cada pivot (asumimos orden fila->pivot), expresar x_pivot en función de los libres
+            for r, c in enumerate(pivots_used):
                 rhs = A[r][-1]
                 expr = f"{rhs}"
                 for l in libres:
                     coef = A[r][l]
                     if coef != 0:
-                        # si coef positivo restamos coef·t  (porque x_pivot - coef·t = rhs)
-                        sign = " - " if coef > 0 else " + "
-                        expr += f"{sign}{abs(coef)}·t{libres.index(l)+1}"
+                        t_idx = free_to_t[l]
+                        if coef > 0:
+                            expr += f" - {abs(coef)}·t{t_idx}"
+                        else:
+                            expr += f" + {abs(coef)}·t{t_idx}"
                 ecuaciones.append(f"x{c+1} = {expr}")
-            for idx, l in enumerate(libres):
-                ecuaciones.append(f"x{l+1} = t{idx+1}")
-            texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\nVariables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\nSolución paramétrica:\n" + "\n".join(ecuaciones)
+
+            # Agregar variables libres como parámetros
+            for l, t_idx in free_to_t.items():
+                ecuaciones.append(f"x{l+1} = t{t_idx}")
+
+            texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\n"
+            texto += "Variables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\n"
+            texto += "Solución paramétrica:\n" + "\n".join(ecuaciones)
             return texto
-        else:
-            # solución única si hay pivotes para todas las variables
-            soluciones = [None]*NV
-            for r, c in enumerate(pivots):
-                soluciones[c] = A[r][-1]
-            texto = "✅ Sistema CONSISTENTE → Solución única:\n" + "\n".join(f"x{i+1} = {soluciones[i]}" for i in range(NV))
-            return texto
+
+        # Caso: sin variables libres -> solución única (tomar RHS de filas correspondientes a pivotes)
+        soluciones = [None] * NV
+        for r, c in enumerate(pivots_used):
+            soluciones[c] = A[r][-1]
+        texto = "✅ Sistema CONSISTENTE → Solución única:\n" + "\n".join(f"x{i+1} = {soluciones[i]}" for i in range(NV))
+        return texto
 
     def gauss_jordan(self, M):
         pasos_fwd, A, pivots = self.eliminacion_adelante(M)
@@ -359,10 +455,10 @@ class VentanaMatrices(QWidget):
         try:
             if op == "Suma":
                 if B is None:
-                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la suma.")
+                    self.mostrar_procedimiento("Error: Matriz B requerida para la suma.")
                     return
                 if len(A) != len(B) or len(A[0]) != len(B[0]):
-                    self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
+                    self.mostrar_procedimiento("Error: A y B deben tener mismas dimensiones.")
                     return
                 C = [[A[i][j] + B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
                 texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la suma:\n"
@@ -370,14 +466,14 @@ class VentanaMatrices(QWidget):
                     for j in range(len(A[0])):
                         texto += f"Elemento ({i+1},{j+1}): A[{i+1}][{j+1}] + B[{i+1}][{j+1}] = {A[i][j]} + {B[i][j]} = {C[i][j]}\n"
                 texto += "\nResultado A + B:\n" + self.mostrar_matriz(C)
-                self.procedimiento_text.setPlainText(texto)
+                self.mostrar_procedimiento(texto)
 
             elif op == "Resta":
                 if B is None:
-                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la resta.")
+                    self.mostrar_procedimiento("Error: Matriz B requerida para la resta.")
                     return
                 if len(A) != len(B) or len(A[0]) != len(B[0]):
-                    self.procedimiento_text.setPlainText("Error: A y B deben tener mismas dimensiones.")
+                    self.mostrar_procedimiento("Error: A y B deben tener mismas dimensiones.")
                     return
                 C = [[A[i][j] - B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
                 texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la resta:\n"
@@ -385,14 +481,14 @@ class VentanaMatrices(QWidget):
                     for j in range(len(A[0])):
                         texto += f"Elemento ({i+1},{j+1}): A[{i+1}][{j+1}] - B[{i+1}][{j+1}] = {A[i][j]} - {B[i][j]} = {C[i][j]}\n"
                 texto += "\nResultado A - B:\n" + self.mostrar_matriz(C)
-                self.procedimiento_text.setPlainText(texto)
+                self.mostrar_procedimiento(texto)
 
             elif op == "Multiplicacion":
                 if B is None:
-                    self.procedimiento_text.setPlainText("Error: Matriz B requerida para la multiplicación.")
+                    self.mostrar_procedimiento("Error: Matriz B requerida para la multiplicación.")
                     return
                 if len(A[0]) != len(B):
-                    self.procedimiento_text.setPlainText("Error: columnas(A) ≠ filas(B).")
+                    self.mostrar_procedimiento("Error: columnas(A) ≠ filas(B).")
                     return
                 C = [[sum(A[i][k]*B[k][j] for k in range(len(B))) for j in range(len(B[0]))] for i in range(len(A))]
                 texto = "Matriz A:\n" + self.mostrar_matriz(A) + "\nMatriz B:\n" + self.mostrar_matriz(B) + "\nPasos de la multiplicación:\n"
@@ -403,27 +499,23 @@ class VentanaMatrices(QWidget):
                         result = sum(A[i][k] * B[k][j] for k in range(len(B)))
                         texto += f"Elemento ({i+1},{j+1}): {sum_str} = {result}\n"
                 texto += "\nResultado A × B:\n" + self.mostrar_matriz(C)
-                self.procedimiento_text.setPlainText(texto)
+                self.mostrar_procedimiento(texto)
 
             elif op == "Gauss":
                 # Se asume que A corresponde a una matriz aumentada si hay RHS.
                 pasos, A_escalon, pivots = self.eliminacion_adelante(A)
+                # obtener RREF para diagnóstico más preciso (no añadimos estos pasos al log)
+                _, A_rref = self.eliminacionPivote(A_escalon, pivots)
                 texto = "\n\n".join(pasos) + "\n\nMatriz resultante (escalonada):\n" + self.mostrar_matriz(A_escalon)
-                texto += "\n\nDiagnóstico:\n" + self.analizar_sistema(A_escalon, pivots)
-                self.procedimiento_text.setPlainText(texto)
+                texto += "\n\nDiagnóstico:\n" + self.analizar_sistema(A_rref, pivots)
+                self.mostrar_procedimiento(texto)
 
             elif op == "Gauss-Jordan":
                 pasos, A_rref, pivots = self.gauss_jordan(A)
                 texto = "\n\n".join(pasos) + "\n\nMatriz resultante (RREF):\n" + self.mostrar_matriz(A_rref)
                 texto += "\n\nDiagnóstico:\n" + self.analizar_sistema(A_rref, pivots)
-                self.procedimiento_text.setPlainText(texto)
+                self.mostrar_procedimiento(texto)
 
         except Exception as e:
-            self.procedimiento_text.setPlainText(f"Error al realizar la operación: {str(e)}")
+            self.mostrar_procedimiento(f"Error al realizar la operación: {str(e)}")
 
-# =================== EJECUCIÓN ===================
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    ventana = VentanaMatrices()
-    ventana.show()
-    sys.exit(app.exec())
