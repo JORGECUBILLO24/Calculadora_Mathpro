@@ -103,7 +103,7 @@ class VentanaMatrices(QWidget):
         botones_layout.setContentsMargins(0, 10, 0, 10)
         botones_layout.setSpacing(10)
         self.operacion_combo = QComboBox()
-        self.operacion_combo.addItems(["Suma", "Resta", "Multiplicacion", "Gauss", "Gauss-Jordan"])
+        self.operacion_combo.addItems(["Suma", "Resta", "Multiplicacion", "Traspuesta", "Gauss", "Gauss-Jordan"])
         self.operacion_combo.setFont(font_input)
         self.operacion_combo.setFixedWidth(240)
         self.operacion_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -221,7 +221,8 @@ class VentanaMatrices(QWidget):
 
     def toggle_matrizB(self):
         """Oculta Matriz B si la operación es Gauss/Gauss-Jordan"""
-        if self.operacion_combo.currentText() in ["Gauss", "Gauss-Jordan"]:
+        # Ocultar Matriz B para operaciones que solo requieren una matriz
+        if self.operacion_combo.currentText() in ["Gauss", "Gauss-Jordan", "Traspuesta"]:
             self.b_widget.hide()
             self.tabla_B.hide()
         else:
@@ -499,6 +500,23 @@ class VentanaMatrices(QWidget):
                         result = sum(A[i][k] * B[k][j] for k in range(len(B)))
                         texto += f"Elemento ({i+1},{j+1}): {sum_str} = {result}\n"
                 texto += "\nResultado A × B:\n" + self.mostrar_matriz(C)
+                self.mostrar_procedimiento(texto)
+
+            elif op == "Traspuesta":
+                # Trasponer la matriz A (no se usa B)
+                if not A or not A[0]:
+                    self.mostrar_procedimiento("Error: Matriz A vacía o inválida para trasponer.")
+                    return
+                filas = len(A)
+                cols = len(A[0])
+                # Construir traspuesta
+                T = [[A[i][j] for i in range(filas)] for j in range(cols)]
+                texto = "Matriz A:\n" + self.mostrar_matriz(A)
+                texto += "\nPasos de la traspuesta:\n"
+                for i in range(filas):
+                    for j in range(cols):
+                        texto += f"Elemento A({i+1},{j+1}) -> T({j+1},{i+1}) = {A[i][j]}\n"
+                texto += "\nResultado A^T:\n" + self.mostrar_matriz(T)
                 self.mostrar_procedimiento(texto)
 
             elif op == "Gauss":
