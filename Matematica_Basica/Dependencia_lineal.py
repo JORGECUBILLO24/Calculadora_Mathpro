@@ -1,8 +1,10 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QTableWidget, QTableWidgetItem,
-    QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QSpinBox, QSizePolicy, QHeaderView
+    QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QSpinBox, QSizePolicy, QHeaderView,
+    QTextEdit
 )
+from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt
 
 class VerificarIndependencia(QWidget):
@@ -63,12 +65,20 @@ class VerificarIndependencia(QWidget):
         self.resultado = QLabel("Resultado: ")
         self.resultado.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # Área para mostrar el paso a paso
+        self.pasos_text = QTextEdit()
+        self.pasos_text.setReadOnly(True)
+        self.pasos_text.setFont(QFont("Consolas", 11))
+        self.pasos_text.setMinimumHeight(180)
+        self.pasos_text.setPlaceholderText("Aquí se mostrará el procedimiento paso a paso...")
+
         # ======== LAYOUT PRINCIPAL ========
         layout = QVBoxLayout()
         layout.addLayout(layout_dim)
         layout.addWidget(self.table, 1)
         layout.addLayout(bottom_layout)
         layout.addWidget(self.resultado)
+        layout.addWidget(self.pasos_text, 1)
 
         self.setLayout(layout)
 
@@ -127,7 +137,13 @@ class VerificarIndependencia(QWidget):
                     fila.append(valor)
                 matriz.append(fila)
 
-            rango = self.calcular_rango(matriz)
+            rango, pasos = self.calcular_rango(matriz)
+
+            # Mostrar pasos en el área correspondiente
+            try:
+                self.pasos_text.setPlainText("\n\n".join(pasos) if pasos else "No hay pasos para mostrar.")
+            except Exception:
+                self.pasos_text.setPlainText("")
 
             if rango == cols:
                 self.resultado.setText(
@@ -144,11 +160,23 @@ class VerificarIndependencia(QWidget):
             QMessageBox.critical(self, "Error inesperado", str(e))
 
     def calcular_rango(self, matriz):
-        """Calcula el rango de una matriz mediante eliminación de Gauss."""
+        """Calcula el rango de una matriz mediante eliminación de Gauss.
+
+        Además devuelve una lista de pasos descriptivos (strings) que explican
+        las operaciones realizadas: intercambios, normalizaciones y eliminaciones.
+        """
+        pasos = []
         A = [fila[:] for fila in matriz]  # copia
         filas = len(A)
         cols = len(A[0]) if filas > 0 else 0
         rango = 0
+
+        def formatear_fila(row):
+            return "[ " + "  ".join(f"{v:.6g}" for v in row) + " ]"
+
+        pasos.append("Matriz inicial:")
+        for r in A:
+            pasos.append(formatear_fila(r))
 
         for col in range(cols):
             # Buscar pivote no nulo
@@ -159,27 +187,53 @@ class VerificarIndependencia(QWidget):
                     break
 
             if pivote is None:
+                pasos.append(f"Columna {col+1}: no se encontró pivote (toda columna nula en las filas restantes).")
                 continue
 
-            # Intercambiar filas
-            A[rango], A[pivote] = A[pivote], A[rango]
+            # Intercambiar filas si es necesario
+            if pivote != rango:
+                pasos.append(f"Intercambiar fila {rango+1} con fila {pivote+1} -> antes:")
+                pasos.append(formatear_fila(A[rango]))
+                pasos.append(formatear_fila(A[pivote]))
+                A[rango], A[pivote] = A[pivote], A[rango]
+                pasos.append("Después del intercambio:")
+                for r in A:
+                    pasos.append(formatear_fila(r))
+
             pivote_val = A[rango][col]
 
             if abs(pivote_val) < 1e-12:
+                pasos.append(f"Pivote en fila {rango+1} cerca de cero; se omite.")
                 continue
 
             # Normalizar fila pivote
+            pasos.append(f"Normalizar fila {rango+1} dividiendo por {pivote_val:.6g} -> antes:")
+            pasos.append(formatear_fila(A[rango]))
             A[rango] = [val / pivote_val for val in A[rango]]
+            pasos.append("Después de normalizar:")
+            pasos.append(formatear_fila(A[rango]))
 
             # Eliminar el resto de filas
             for f in range(filas):
                 if f != rango:
                     factor = A[f][col]
+                    if abs(factor) < 1e-12:
+                        continue
+                    pasos.append(f"F{f+1} -> F{f+1} - ({factor:.6g})·F{rango+1} -> antes:")
+                    pasos.append(formatear_fila(A[f]))
                     A[f] = [A[f][c] - factor * A[rango][c] for c in range(cols)]
+                    pasos.append("Después:")
+                    pasos.append(formatear_fila(A[f]))
 
             rango += 1
 
-        return rango
+            # Mostrar matriz actual tras procesar la columna
+            pasos.append(f"Matriz tras procesar columna {col+1}:")
+            for r in A:
+                pasos.append(formatear_fila(r))
+
+        pasos.append(f"Rango calculado: {rango}")
+        return rango, pasos
 
 
 if __name__ == "__main__":
