@@ -1,4 +1,5 @@
 import sys
+import traceback
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QTableWidget, QTableWidgetItem,
     QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QSpinBox, QSizePolicy, QHeaderView,
@@ -111,20 +112,26 @@ class VerificarIndependencia(QWidget):
                 self.table.setItem(i, j, QTableWidgetItem("0"))
 
         self.resultado.setText("Resultado: ")
+        self.pasos_text.clear()
 
     def limpiar_tabla(self):
         """Limpia el contenido de la tabla."""
         self.table.clearContents()
         self.resultado.setText("Resultado: ")
+        self.pasos_text.clear()
 
     def verificar_independencia(self):
-        """Verifica si los vectores son linealmente independientes."""
+        """Verifica si los vectores son linealmente independientes (analizando Ax=0)."""
         filas = self.table.rowCount()
         cols = self.table.columnCount()
 
         if filas == 0 or cols == 0:
             QMessageBox.warning(self, "Advertencia", "Primero genera la tabla antes de verificar.")
             return
+
+        # Asegurar que cualquier editor de celda confirme la edición
+        self.table.setFocus()
+        QApplication.processEvents()
 
         try:
             # Construir matriz desde la tabla
@@ -137,27 +144,59 @@ class VerificarIndependencia(QWidget):
                     fila.append(valor)
                 matriz.append(fila)
 
-            rango, pasos = self.calcular_rango(matriz)
+            # Caso teórico rápido: más vectores que dimensión (n > m) ⇒ dependientes
+            if cols > filas:
+                rango, pasos = self.calcular_rango(matriz)
+                free_vars = max(cols - rango, 0)
+                explicacion = [
+                    "",
+                    "Comprobación teórica:",
+                    f"- Hay más vectores (n={cols}) que dimensión (m={filas}).",
+                    "- No pueden ser LI cuando n > m.",
+                    f"- Rango(A) = {rango} ⇒ variables libres = n - rango = {free_vars} ⇒ ∞ soluciones no triviales de Ax=0."
+                ]
+                self.pasos_text.setPlainText("\n\n".join(pasos + explicacion))
+                self.pasos_text.verticalScrollBar().setValue(0)
+                self.resultado.setText(
+                    f'<b style="color:red;">Los vectores son DEPENDIENTES ❌ '
+                    f'(n={cols} &gt; m={filas}; rango={rango}, {free_vars} variables libres ⇒ ∞ soluciones de Ax=0)</b>'
+                )
+                return
 
-            # Mostrar pasos en el área correspondiente
-            try:
-                self.pasos_text.setPlainText("\n\n".join(pasos) if pasos else "No hay pasos para mostrar.")
-            except Exception:
-                self.pasos_text.setPlainText("")
+            rango, pasos = self.calcular_rango(matriz)
+            free_vars = max(cols - rango, 0)
+
+            # Mostrar pasos + resumen conceptual correcto
+            resumen = [
+                "",
+                "Resumen conceptual (Ax=0):",
+                f"- Rango(A) = {rango}, columnas (n) = {cols}.",
+                f"- Variables libres = n - rango = {free_vars}.",
+                "- Si hay variables libres ⇒ ∞ soluciones no triviales ⇒ vectores dependientes.",
+                "- 'Inconsistente' solo aplica a Ax=b con b ≠ 0 cuando rang(A) < rang([A|b])."
+            ]
+            self.pasos_text.setPlainText("\n\n".join(pasos + resumen))
+            self.pasos_text.verticalScrollBar().setValue(0)
 
             if rango == cols:
                 self.resultado.setText(
-                    f'<b style="color:green;">Los vectores son LINEALMENTE INDEPENDIENTES ✅ (rango = {rango})</b>'
+                    f'<b style="color:green;">Los vectores son LINEALMENTE INDEPENDIENTES ✅ '
+                    f'(rango = {rango} = n; Ax=0 solo tiene la solución trivial)</b>'
                 )
             else:
                 self.resultado.setText(
-                    f'<b style="color:red;">Los vectores son DEPENDIENTES ❌ (rango = {rango})</b>'
+                    f'<b style="color:red;">Los vectores son DEPENDIENTES ❌ '
+                    f'(rango = {rango} &lt; n; {free_vars} variables libres ⇒ ∞ soluciones no triviales de Ax=0)</b>'
                 )
 
         except ValueError:
-            QMessageBox.critical(self, "Error", "Verifica que todos los valores sean numéricos.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error inesperado", str(e))
+            msg = "Verifica que todos los valores sean numéricos."
+            self.pasos_text.setPlainText(msg)
+            QMessageBox.critical(self, "Error", msg)
+        except Exception:
+            tb = traceback.format_exc()
+            self.pasos_text.setPlainText("Ocurrió un error:\n\n" + tb)
+            QMessageBox.critical(self, "Error inesperado", "Ocurrió un error. Revisa el panel de pasos para más detalles.")
 
     def calcular_rango(self, matriz):
         """Calcula el rango de una matriz mediante eliminación de Gauss.
@@ -236,8 +275,3 @@ class VerificarIndependencia(QWidget):
         return rango, pasos
 
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    ventana = VerificarIndependencia()
-    ventana.show()
-    sys.exit(app.exec())
