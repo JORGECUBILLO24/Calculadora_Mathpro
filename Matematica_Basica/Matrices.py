@@ -394,50 +394,88 @@ class VentanaMatrices(QWidget):
         # variables libres: índices de columnas que no son pivote
         libres = [i for i in range(NV) if i not in pivots_used]
 
+        # Construir un mapeo columna_pivot -> fila donde aparece (si es RREF debería ser exacto)
+        pivot_col_to_row = {}
+        for r in range(n):
+            for c in range(NV):
+                if A[r][c] != 0:
+                    # tomamos la primera entrada no nula como pivot para esa fila
+                    if c not in pivot_col_to_row:
+                        pivot_col_to_row[c] = r
+                    break
+
         # Caso: no hay pivotes -> todas las variables son libres
         if len(pivots_used) == 0:
             if NV == 0:
                 return "✅ Sistema CONSISTENTE → Sin variables (trivial)."
             texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\n"
+            texto += "Tipo: Sistema  DEPENDIENTE\n"
             texto += "Variables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\n"
             texto += "Solución paramétrica:\n"
-            for idx, l in enumerate(libres):
-                texto += f"x{l+1} = t{idx+1}\n"
+            for i in range(NV):
+                texto += f"x{i+1} = Libre\n"
             return texto
 
-        # Si hay variables libres, construir solución paramétrica
+        # Caso: si hay variables libres, construir solución paramétrica mostrando 'Libre' para ellas
         if libres:
-            ecuaciones = []
+            # mapear cada variable (por orden) a una expresión o a 'Libre'
+            lines = []
+            # crear índices para parámetros t1, t2, ... (aunque no los mostramos como x = t, los usamos en expresiones)
             free_to_t = {l: idx+1 for idx, l in enumerate(libres)}
 
-            # Para cada pivot (asumimos orden fila->pivot), expresar x_pivot en función de los libres
-            for r, c in enumerate(pivots_used):
-                rhs = A[r][-1]
-                expr = f"{rhs}"
-                for l in libres:
-                    coef = A[r][l]
-                    if coef != 0:
-                        t_idx = free_to_t[l]
-                        if coef > 0:
-                            expr += f" - {abs(coef)}·t{t_idx}"
-                        else:
-                            expr += f" + {abs(coef)}·t{t_idx}"
-                ecuaciones.append(f"x{c+1} = {expr}")
+            for i in range(NV):
+                if i in libres:
+                    lines.append(f"x{i+1} = Libre")
+                else:
+                    # variable pivote: encontrar fila correspondiente
+                    row = pivot_col_to_row.get(i)
+                    if row is None:
+                        # como fallback si no encontramos la fila, marcar como indefinida
+                        lines.append(f"x{i+1} = ?")
+                        continue
+                    # rhs y construir expresión: x_pivot = rhs - sum(coef * t_k)
+                    rhs = A[row][-1]
+                    # formatear rhs (Fraction -> int si posible)
+                    def fmt_val(v: Fraction):
+                        return str(v.numerator) if v.denominator == 1 else str(v)
 
-            # Agregar variables libres como parámetros
-            for l, t_idx in free_to_t.items():
-                ecuaciones.append(f"x{l+1} = t{t_idx}")
+                    expr = fmt_val(rhs)
+                    for l in libres:
+                        coef = A[row][l]
+                        if coef != 0:
+                            t_idx = free_to_t[l]
+                            # signo: x_pivot = rhs - coef*t  => si coef>0 mostramos ' - coef·t', si coef<0 mostramos ' + abs(coef)·t'
+                            coef_abs = abs(coef)
+                            coef_str = fmt_val(coef_abs)
+                            if coef > 0:
+                                expr += f" - {coef_str}·t{t_idx}"
+                            else:
+                                expr += f" + {coef_str}·t{t_idx}"
+                    lines.append(f"x{i+1} = {expr}")
 
             texto = "✅ Sistema CONSISTENTE → Infinitas soluciones.\n"
+            texto += "Tipo: Sistema  DEPENDIENTE\n"
             texto += "Variables libres: " + ", ".join(f"x{i+1}" for i in libres) + "\n"
-            texto += "Solución paramétrica:\n" + "\n".join(ecuaciones)
+            texto += "Solución paramétrica:\n" + "\n".join(lines)
             return texto
 
         # Caso: sin variables libres -> solución única (tomar RHS de filas correspondientes a pivotes)
         soluciones = [None] * NV
-        for r, c in enumerate(pivots_used):
-            soluciones[c] = A[r][-1]
-        texto = "✅ Sistema CONSISTENTE → Solución única:\n" + "\n".join(f"x{i+1} = {soluciones[i]}" for i in range(NV))
+        for c in pivots_used:
+            r = pivot_col_to_row.get(c)
+            if r is not None:
+                soluciones[c] = A[r][-1]
+        # formatear soluciones
+        def fmt_val(v: Fraction):
+            return str(v.numerator) if v.denominator == 1 else str(v)
+
+        texto = "✅ Sistema CONSISTENTE → Solución única.\n"
+        texto += "Tipo: Sistema  INDEPENDIENTE\n"
+        texto += "Solución:\n"
+        for i in range(NV):
+            val = soluciones[i]
+            val_str = fmt_val(val) if val is not None else "0"
+            texto += f"x{i+1} = {val_str}\n"
         return texto
 
     def gauss_jordan(self, M):
