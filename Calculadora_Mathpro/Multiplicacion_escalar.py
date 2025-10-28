@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
-    QTableWidget, QTableWidgetItem, QTextEdit, QSizePolicy
+    QTableWidget, QTableWidgetItem, QTextEdit, QSizePolicy, QComboBox
 )
 from PyQt6.QtGui import QFont, QTextCursor
 from PyQt6.QtCore import Qt, QTimer
@@ -70,13 +70,30 @@ class VentanaMultiplicacionEscalar(QWidget):
 
         layout.addLayout(dims)
 
-        # Tabla
+        # Tablas para dos matrices (A y B) lado a lado
+        tablas_layout = QHBoxLayout()
+
+        col_a_layout = QVBoxLayout()
+        col_a_layout.addWidget(QLabel("Matriz A:"))
         self.tabla = QTableWidget()
         self.tabla.setRowCount(3)
         self.tabla.setColumnCount(3)
         self.tabla.setFont(QFont("Consolas", 12))
-        self._rellenar_celdas_con_ceros()
-        layout.addWidget(self.tabla)
+        self._rellenar_celdas_con_ceros(self.tabla)
+        col_a_layout.addWidget(self.tabla)
+
+        col_b_layout = QVBoxLayout()
+        col_b_layout.addWidget(QLabel("Matriz B:"))
+        self.tabla2 = QTableWidget()
+        self.tabla2.setRowCount(3)
+        self.tabla2.setColumnCount(3)
+        self.tabla2.setFont(QFont("Consolas", 12))
+        self._rellenar_celdas_con_ceros(self.tabla2)
+        col_b_layout.addWidget(self.tabla2)
+
+        tablas_layout.addLayout(col_a_layout)
+        tablas_layout.addLayout(col_b_layout)
+        layout.addLayout(tablas_layout)
 
         # Escalar y botones
         ctrl = QHBoxLayout()
@@ -85,6 +102,12 @@ class VentanaMultiplicacionEscalar(QWidget):
         self.escalar_input.setFixedWidth(120)
         self.escalar_input.setFont(font_input)
         ctrl.addWidget(self.escalar_input)
+        # Opción para operar (sumar/restar) resultados después de multiplicar
+        self.op_combo = QComboBox()
+        self.op_combo.setFont(font_input)
+        self.op_combo.addItems(["No operar", "Sumar resultados", "Restar resultados (A - B)"])
+        self.op_combo.setFixedWidth(200)
+        ctrl.addWidget(self.op_combo)
         self.btn_calcular = QPushButton("Calcular")
         self.btn_calcular.setFont(font_btn)
         ctrl.addWidget(self.btn_calcular)
@@ -107,19 +130,19 @@ class VentanaMultiplicacionEscalar(QWidget):
         self.btn_calcular.clicked.connect(self.calcular)
         self.btn_actualizar.clicked.connect(self.actualizar_dimensiones)
 
-    def _rellenar_celdas_con_ceros(self):
-        filas = self.tabla.rowCount()
-        cols = self.tabla.columnCount()
+    def _rellenar_celdas_con_ceros(self, table: QTableWidget):
+        filas = table.rowCount()
+        cols = table.columnCount()
         for i in range(filas):
             for j in range(cols):
-                item = self.tabla.item(i, j)
+                item = table.item(i, j)
                 if item is None:
                     item = QTableWidgetItem("0")
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     # forzar texto negro y fuente legible
                     item.setForeground(Qt.GlobalColor.black)
                     item.setFont(QFont("Consolas", 12))
-                    self.tabla.setItem(i, j, item)
+                    table.setItem(i, j, item)
 
     def actualizar_dimensiones(self):
         try:
@@ -127,20 +150,22 @@ class VentanaMultiplicacionEscalar(QWidget):
             c = int(self.cols_input.text())
             if f <= 0 or c <= 0:
                 return
-            self.tabla.setRowCount(f)
-            self.tabla.setColumnCount(c)
-            self._rellenar_celdas_con_ceros()
+            # actualizar ambas tablas
+            for t in (self.tabla, self.tabla2):
+                t.setRowCount(f)
+                t.setColumnCount(c)
+                self._rellenar_celdas_con_ceros(t)
         except Exception:
             return
 
-    def leer_tabla(self):
-        filas = self.tabla.rowCount()
-        cols = self.tabla.columnCount()
+    def leer_tabla(self, table: QTableWidget):
+        filas = table.rowCount()
+        cols = table.columnCount()
         M = []
         for i in range(filas):
             row = []
             for j in range(cols):
-                item = self.tabla.item(i, j)
+                item = table.item(i, j)
                 val = item.text().strip() if item and item.text() else "0"
                 try:
                     val_norm = val.replace(",", ".")
@@ -149,6 +174,41 @@ class VentanaMultiplicacionEscalar(QWidget):
                     row.append(Fraction(0))
             M.append(row)
         return M
+
+    def _operar_matrices_resultado(self, A, B, oper: str):
+        """
+        Opera las matrices A y B (listas de Fraction) según oper: 'sum' o 'sub'.
+        Devuelve (R, texto) donde R es la matriz resultado o None si no compatible.
+        """
+        filas_a = len(A)
+        cols_a = len(A[0]) if filas_a > 0 else 0
+        filas_b = len(B)
+        cols_b = len(B[0]) if filas_b > 0 else 0
+
+        if filas_a != filas_b or cols_a != cols_b:
+            return None, "Las dimensiones de las matrices resultantes no coinciden; no se puede operar."
+
+        R = [[None for _ in range(cols_a)] for _ in range(filas_a)]
+
+        def fmt(x: Fraction):
+            return str(x.numerator) if x.denominator == 1 else str(x)
+
+        texto = "Pasos de la operación entre resultados:\n"
+        texto += f"Operación: {'Suma' if oper=='sum' else 'Resta'}\n"
+        for i in range(filas_a):
+            for j in range(cols_a):
+                if oper == 'sum':
+                    R[i][j] = A[i][j] + B[i][j]
+                    texto += f"Elemento ({i+1},{j+1}): {A[i][j]} + {B[i][j]} = {R[i][j]}\n"
+                else:
+                    R[i][j] = A[i][j] - B[i][j]
+                    texto += f"Elemento ({i+1},{j+1}): {A[i][j]} - {B[i][j]} = {R[i][j]}\n"
+
+        texto += "\nResultado final:\n"
+        for fila in R:
+            texto += "[ " + "  ".join(fmt(x) for x in fila) + " ]\n"
+
+        return R, texto
 
     def mostrar_procedimiento(self, texto: str):
         self.procedimiento.setPlainText(texto)
@@ -161,12 +221,30 @@ class VentanaMultiplicacionEscalar(QWidget):
             pass
 
     def calcular(self):
-        A = self.leer_tabla()
+        A = self.leer_tabla(self.tabla)
         esc_text = self.escalar_input.text().strip()
         try:
             esc = Fraction(esc_text.replace(",", "."))
         except Exception:
             self.mostrar_procedimiento("Escalar inválido")
             return
-        C, texto = multiplicar_matriz_por_escalar(A, esc)
-        self.mostrar_procedimiento(texto)
+        # Multiplicar matriz A
+        C_a, texto_a = multiplicar_matriz_por_escalar(A, esc)
+
+        # Multiplicar matriz B
+        B = self.leer_tabla(self.tabla2)
+        C_b, texto_b = multiplicar_matriz_por_escalar(B, esc)
+
+        # Combinar textos de procedimiento
+        texto_completo = "--- Resultado para Matriz A ---\n" + texto_a + "\n\n"
+        texto_completo += "--- Resultado para Matriz B ---\n" + texto_b
+
+        # Revisar si el usuario pidió operar los resultados
+        op_text = self.op_combo.currentText()
+        if op_text != "No operar":
+            oper = 'sum' if op_text.startswith('Sumar') else 'sub'
+            R, texto_op = self._operar_matrices_resultado(C_a, C_b, oper)
+            texto_completo += "\n\n--- Operación entre resultados ---\n"
+            texto_completo += texto_op
+
+        self.mostrar_procedimiento(texto_completo)
