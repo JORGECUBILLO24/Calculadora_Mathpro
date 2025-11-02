@@ -1,9 +1,11 @@
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
-    QComboBox, QTableWidget, QTableWidgetItem, QTextEdit,
-    QSizePolicy, QHeaderView, QInputDialog
+    QComboBox, QTableWidget, QTableWidgetItem, QTextEdit, QDialog,
+    QPlainTextEdit, QSizePolicy, QHeaderView, QInputDialog
 )
-from PyQt6.QtGui import QFont, QTextCursor
+import re 
+
+from PyQt6.QtGui import QFont, QTextCursor, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer
 from fractions import Fraction
 import copy
@@ -31,6 +33,19 @@ class VentanaMatrices(QWidget):
 
         # --------- Panel dimensiones ---------
         input_layout = QHBoxLayout(); input_layout.setSpacing(20)
+        corner = QHBoxLayout()
+        corner.setContentsMargins(0, 0, 0, 0)
+        corner.addStretch(1)
+
+        self.btn_eq2mat = QPushButton("Ecuaciones → Matrices")
+        self.btn_eq2mat.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_eq2mat.setFixedHeight(36)
+        self.btn_eq2mat.setStyleSheet("background-color:#455A64; color:white; border-radius:12px; padding:6px;")
+        self.btn_eq2mat.clicked.connect(self._abrir_convertidor_ecuaciones)
+
+        corner.addWidget(self.btn_eq2mat, 0)
+        root = QVBoxLayout(); root.setSpacing(12); root.setContentsMargins(12, 12, 12, 12)
+        root.addLayout(corner)
 
         # Matriz A
         self.a_widget = QWidget()
@@ -117,7 +132,6 @@ class VentanaMatrices(QWidget):
         self.procedimiento_text.setStyleSheet("background-color:white; color:#000; border:2px solid #B0BEC5; border-radius:12px;")
 
         # Layout principal
-        root = QVBoxLayout(); root.setSpacing(12); root.setContentsMargins(12, 12, 12, 12)
         root.addLayout(input_layout)
         root.addLayout(matrices_layout)
         root.addLayout(acciones)
@@ -168,6 +182,7 @@ class VentanaMatrices(QWidget):
             cB = max(1, int(self.columnas_B_input.text()))
         except Exception:
             return
+    
 
         # Tabla A
         self.tabla_A.setRowCount(fA); self.tabla_A.setColumnCount(cA)
@@ -231,6 +246,7 @@ class VentanaMatrices(QWidget):
         QTimer.singleShot(150, _scroll)
 
     def limpiar_matrices(self):
+        # Restablecer todas las celdas a "0" y limpiar el panel de procedimiento
         for tabla in (self.tabla_A, self.tabla_B):
             for i in range(tabla.rowCount()):
                 for j in range(tabla.columnCount()):
@@ -242,6 +258,145 @@ class VentanaMatrices(QWidget):
                     else:
                         it.setText("0")
         self.procedimiento_text.clear()
+
+    def _abrir_convertidor_ecuaciones(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Convertidor: Ecuación → Matriz")
+        lay = QVBoxLayout(dlg)
+
+        info = QLabel("Pega una ecuación por línea (variables x1, x2, x3, ...). "
+                      "Ejemplos:\n"
+                      "  2x1 - 3x2 + x3 = 7\n"
+                      "  x1 + x3 = 2\n"
+                      "Constantes sin variable también se aceptan (p.ej., +4).")
+        info.setWordWrap(True)
+
+        eq_edit = QTextEdit()
+        eq_edit.setPlaceholderText("Ejemplo:\n2x1 - 3x2 + x3 = 7\nx1 + x3 = 2")
+        eq_edit.setMinimumHeight(120)
+
+        out_box = QPlainTextEdit()
+        out_box.setReadOnly(True)
+        out_box.setPlaceholderText("Matriz aumentada [A|b] aparecerá aquí...")
+
+        btns = QHBoxLayout()
+        btn_convertir = QPushButton("Convertir")
+        btn_copiar = QPushButton("Copiar matriz")
+        btn_cerrar = QPushButton("Cerrar")
+        btns.addWidget(btn_convertir)
+        btns.addStretch(1)
+        btns.addWidget(btn_copiar)
+        btns.addWidget(btn_cerrar)
+
+        lay.addWidget(info)
+        lay.addWidget(eq_edit)
+        lay.addWidget(out_box)
+        lay.addLayout(btns)
+
+        def _convertir():
+            try:
+                A, b = self._ecuaciones_a_matriz(eq_edit.toPlainText())
+                # Formato bonito [A | b]
+                filas = ["[ " + "  ".join(self._fmt(c) for c in fila) + " | " + self._fmt(bb) + " ]"
+                         for fila, bb in zip(A, b)]
+                bonito = "Matriz aumentada [A|b]:\n" + "\n".join(filas)
+
+                # Solo números (útil para pegar por filas)
+                solo = "\n".join(" ".join(self._fmt(c) for c in (fila + [bb]))
+                                 for fila, bb in zip(A, b))
+
+                out_box.setPlainText(bonito + "\n\nSolo números (A|b):\n" + solo)
+            except Exception as e:
+                out_box.setPlainText(f"Error: {e}")
+
+        def _copiar():
+            QGuiApplication.clipboard().setText(out_box.toPlainText())
+
+        btn_convertir.clicked.connect(_convertir)
+        btn_copiar.clicked.connect(_copiar)
+        btn_cerrar.clicked.connect(dlg.accept)
+
+        dlg.resize(520, 460)
+        dlg.exec()
+
+    def _ecuaciones_a_matriz(self, texto: str):
+        lineas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+        if not lineas:
+            raise ValueError("No hay ecuaciones.")
+
+        ecuaciones = []
+        max_var = 0
+
+        for ln in lineas:
+            s = (ln.replace("−", "-")
+                   .replace("—", "-")
+                   .replace("·", "*")
+                   .replace(" ", ""))
+            if "=" in s:
+                left, right = s.split("=", 1)
+            else:
+                left, right = s, "0"
+
+            coefL, constL, mL = self._parse_expr_vars_y_const(left)
+            coefR, constR, mR = self._parse_expr_vars_y_const(right)
+            max_var = max(max_var, mL, mR)
+
+            # Pasar todo a la izquierda: (coefL - coefR)·x = (constR - constL)
+            coefs = {}
+            for k in set(coefL) | set(coefR):
+                coefs[k] = coefL.get(k, Fraction(0)) - coefR.get(k, Fraction(0))
+            const = constR - constL
+            ecuaciones.append((coefs, const))
+
+        # Construir A y b
+        A, b = [], []
+        for coefs, const in ecuaciones:
+            fila = [Fraction(0) for _ in range(max_var)]
+            for k, v in coefs.items():
+                if k <= 0:
+                    raise ValueError("Las variables deben ser x1, x2, x3, ...")
+                if k - 1 >= len(fila):
+                    fila.extend([Fraction(0)] * (k - len(fila)))
+                fila[k - 1] = v
+            A.append(fila)
+            b.append(const)
+
+        return A, b
+
+    def _parse_expr_vars_y_const(self, expr: str):
+        s = expr
+        var_pat = re.compile(r'([+\-]?)(\d+(?:/\d+)?)?\*?x(\d+)')
+        coefs = {}
+        max_var = 0
+        spans = []
+
+        # Capturar términos con variables
+        for m in var_pat.finditer(s):
+            sign = -1 if m.group(1) == '-' else 1
+            coef = m.group(2)
+            c = Fraction(coef) if coef else Fraction(1)
+            idx = int(m.group(3))
+            coefs[idx] = coefs.get(idx, Fraction(0)) + sign * c
+            max_var = max(max_var, idx)
+            spans.append((m.start(), m.end()))
+
+        # Quitar los segmentos de variables y analizar constantes
+        keep = []
+        last = 0
+        for a, b in spans:
+            keep.append(s[last:a])
+            last = b
+        keep.append(s[last:])
+        resto = ''.join(keep)
+
+        const = Fraction(0)
+        if resto:
+            # constantes sueltas: +5, -3/2, 7, etc.
+            for sign, num in re.findall(r'([+\-]?)(\d+(?:/\d+)?)', resto):
+                c = Fraction(num)
+                const += (-c if sign == '-' else c)
+
+        return coefs, const, max_var
 
     # ---------------- Núcleo Gauss / Gauss-Jordan ----------------
     def _forward_elimination_make_pivots_one(self, M):
