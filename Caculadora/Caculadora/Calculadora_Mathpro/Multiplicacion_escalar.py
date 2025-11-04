@@ -55,20 +55,41 @@ class VentanaMultiplicacionEscalar(QWidget):
 
         layout = QVBoxLayout()
 
-        # Dimensiones
-        dims = QHBoxLayout()
-        dims.addWidget(QLabel("Filas:"))
-        self.filas_input = QLineEdit("3")
-        self.filas_input.setFixedWidth(50)
-        self.filas_input.setFont(font_input)
-        dims.addWidget(self.filas_input)
-        dims.addWidget(QLabel("Columnas:"))
-        self.cols_input = QLineEdit("3")
-        self.cols_input.setFixedWidth(50)
-        self.cols_input.setFont(font_input)
-        dims.addWidget(self.cols_input)
+        # Dimensiones para Matriz A
+        dims_a = QHBoxLayout()
+        dims_a.addWidget(QLabel("Filas A:"))
+        self.filas_input_a = QLineEdit("3")
+        self.filas_input_a.setFixedWidth(50)
+        self.filas_input_a.setFont(font_input)
+        dims_a.addWidget(self.filas_input_a)
+        dims_a.addWidget(QLabel("Columnas A:"))
+        self.cols_input_a = QLineEdit("3")
+        self.cols_input_a.setFixedWidth(50)
+        self.cols_input_a.setFont(font_input)
+        dims_a.addWidget(self.cols_input_a)
+        self.btn_actualizar_a = QPushButton("Actualizar A")
+        self.btn_actualizar_a.setFont(font_btn)
+        dims_a.addWidget(self.btn_actualizar_a)
 
-        layout.addLayout(dims)
+        layout.addLayout(dims_a)
+
+        # Dimensiones para Matriz B
+        dims_b = QHBoxLayout()
+        dims_b.addWidget(QLabel("Filas B:"))
+        self.filas_input_b = QLineEdit("3")
+        self.filas_input_b.setFixedWidth(50)
+        self.filas_input_b.setFont(font_input)
+        dims_b.addWidget(self.filas_input_b)
+        dims_b.addWidget(QLabel("Columnas B:"))
+        self.cols_input_b = QLineEdit("3")
+        self.cols_input_b.setFixedWidth(50)
+        self.cols_input_b.setFont(font_input)
+        dims_b.addWidget(self.cols_input_b)
+        self.btn_actualizar_b = QPushButton("Actualizar B")
+        self.btn_actualizar_b.setFont(font_btn)
+        dims_b.addWidget(self.btn_actualizar_b)
+
+        layout.addLayout(dims_b)
 
         # Tablas para dos matrices (A y B) lado a lado
         tablas_layout = QHBoxLayout()
@@ -95,13 +116,18 @@ class VentanaMultiplicacionEscalar(QWidget):
         tablas_layout.addLayout(col_b_layout)
         layout.addLayout(tablas_layout)
 
-        # Escalar y botones
+        # Escalares y botones
         ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("Escalar:"))
-        self.escalar_input = QLineEdit("2")
-        self.escalar_input.setFixedWidth(120)
-        self.escalar_input.setFont(font_input)
-        ctrl.addWidget(self.escalar_input)
+        ctrl.addWidget(QLabel("Escalar A:"))
+        self.escalar_input_a = QLineEdit("2")
+        self.escalar_input_a.setFixedWidth(120)
+        self.escalar_input_a.setFont(font_input)
+        ctrl.addWidget(self.escalar_input_a)
+        ctrl.addWidget(QLabel("Escalar B:"))
+        self.escalar_input_b = QLineEdit("3")
+        self.escalar_input_b.setFixedWidth(120)
+        self.escalar_input_b.setFont(font_input)
+        ctrl.addWidget(self.escalar_input_b)
         # Opción para operar (sumar/restar) resultados después de multiplicar
         self.op_combo = QComboBox()
         self.op_combo.setFont(font_input)
@@ -111,9 +137,6 @@ class VentanaMultiplicacionEscalar(QWidget):
         self.btn_calcular = QPushButton("Calcular")
         self.btn_calcular.setFont(font_btn)
         ctrl.addWidget(self.btn_calcular)
-        self.btn_actualizar = QPushButton("Actualizar dimensiones")
-        self.btn_actualizar.setFont(font_btn)
-        ctrl.addWidget(self.btn_actualizar)
 
         layout.addLayout(ctrl)
 
@@ -128,7 +151,8 @@ class VentanaMultiplicacionEscalar(QWidget):
 
         # Conexiones
         self.btn_calcular.clicked.connect(self.calcular)
-        self.btn_actualizar.clicked.connect(self.actualizar_dimensiones)
+        self.btn_actualizar_a.clicked.connect(self.actualizar_dimensiones_a)
+        self.btn_actualizar_b.clicked.connect(self.actualizar_dimensiones_b)
 
     def _rellenar_celdas_con_ceros(self, table: QTableWidget):
         filas = table.rowCount()
@@ -144,17 +168,27 @@ class VentanaMultiplicacionEscalar(QWidget):
                     item.setFont(QFont("Consolas", 12))
                     table.setItem(i, j, item)
 
-    def actualizar_dimensiones(self):
+    def actualizar_dimensiones_a(self):
         try:
-            f = int(self.filas_input.text())
-            c = int(self.cols_input.text())
+            f = int(self.filas_input_a.text())
+            c = int(self.cols_input_a.text())
             if f <= 0 or c <= 0:
                 return
-            # actualizar ambas tablas
-            for t in (self.tabla, self.tabla2):
-                t.setRowCount(f)
-                t.setColumnCount(c)
-                self._rellenar_celdas_con_ceros(t)
+            self.tabla.setRowCount(f)
+            self.tabla.setColumnCount(c)
+            self._rellenar_celdas_con_ceros(self.tabla)
+        except Exception:
+            return
+
+    def actualizar_dimensiones_b(self):
+        try:
+            f = int(self.filas_input_b.text())
+            c = int(self.cols_input_b.text())
+            if f <= 0 or c <= 0:
+                return
+            self.tabla2.setRowCount(f)
+            self.tabla2.setColumnCount(c)
+            self._rellenar_celdas_con_ceros(self.tabla2)
         except Exception:
             return
 
@@ -222,18 +256,24 @@ class VentanaMultiplicacionEscalar(QWidget):
 
     def calcular(self):
         A = self.leer_tabla(self.tabla)
-        esc_text = self.escalar_input.text().strip()
+        esc_text_a = self.escalar_input_a.text().strip()
         try:
-            esc = Fraction(esc_text.replace(",", "."))
+            esc_a = Fraction(esc_text_a.replace(",", "."))
         except Exception:
-            self.mostrar_procedimiento("Escalar inválido")
+            self.mostrar_procedimiento("Escalar A inválido")
             return
         # Multiplicar matriz A
-        C_a, texto_a = multiplicar_matriz_por_escalar(A, esc)
+        C_a, texto_a = multiplicar_matriz_por_escalar(A, esc_a)
 
         # Multiplicar matriz B
         B = self.leer_tabla(self.tabla2)
-        C_b, texto_b = multiplicar_matriz_por_escalar(B, esc)
+        esc_text_b = self.escalar_input_b.text().strip()
+        try:
+            esc_b = Fraction(esc_text_b.replace(",", "."))
+        except Exception:
+            self.mostrar_procedimiento("Escalar B inválido")
+            return
+        C_b, texto_b = multiplicar_matriz_por_escalar(B, esc_b)
 
         # Combinar textos de procedimiento
         texto_completo = "--- Resultado para Matriz A ---\n" + texto_a + "\n\n"
