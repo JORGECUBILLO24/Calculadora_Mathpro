@@ -1,15 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-main.py
-Punto de entrada principal para la Suite MathPro.
-"""
+
 import sys
 import os
 
-# =============================================================================
-#  CONFIGURACIÓN INICIAL (PARCHE GPU)
-#  Es vital definir esto ANTES de importar PyQt6 para tu Lenovo T460s.
-# =============================================================================
 os.environ["QT_OPENGL"] = "software"
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
@@ -26,14 +18,12 @@ except ImportError:
     sys.exit(1)
 
 # =============================================================================
-#  EJECUCIÓN
+#  EJECUCIÓN brutal que lanza la aplicación
 # =============================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Opcional: Configurar un icono global para la app si tienes uno
-    # app.setWindowIcon(QIcon("icono.png")) 
-
+  
     window = MainWindow()
     window.show()
     
