@@ -1,0 +1,9 @@
+PyQt6
+PyQt6-WebEngine
+sympy
+numpy
+matplotlib
+matplotlib-venn
+pandas
+openpyxl
+manim
