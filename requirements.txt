@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 PyQt6
 PyQt6-WebEngine
 sympy
@@ -7,14 +6,4 @@ matplotlib
 matplotlib-venn
 pandas
 openpyxl
-=======
-PyQt6
-PyQt6-WebEngine
-sympy
-numpy
-matplotlib
-matplotlib-venn
-pandas
-openpyxl
->>>>>>> ef984993824d81b7fabae7af610d92334376c7ab
 manim
