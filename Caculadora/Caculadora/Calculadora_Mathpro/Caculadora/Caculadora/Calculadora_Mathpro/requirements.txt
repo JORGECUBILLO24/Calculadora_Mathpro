@@ -1,0 +1,7 @@
+PyQt6
+sympy
+numpy
+matplotlib
+matplotlib-venn
+
+

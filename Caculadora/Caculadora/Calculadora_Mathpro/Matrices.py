@@ -1,440 +1,950 @@
+#Jorge Cubillo - Calculadora Mathpro - Módulo Matrices (Material Design)
+#jorge la bestia 
+import re
+import copy
+from fractions import Fraction
+
+from PyQt6.QtCore import Qt
+
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
     QComboBox, QTableWidget, QTableWidgetItem, QTextEdit, QDialog,
-    QPlainTextEdit, QSizePolicy, QHeaderView, QInputDialog
+    QPlainTextEdit, QHeaderView, QSplitter, QSizePolicy 
 )
-import re 
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
-from PyQt6.QtGui import QFont, QTextCursor, QGuiApplication
-from PyQt6.QtCore import Qt, QTimer
-from fractions import Fraction
-import copy
 
+# ===============================================================
+#                  MATHJAX TEMPLATE (Material Design)
+# ===============================================================
+
+HTML_MATHJAX_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<style>
+body {{
+    font-family: 'Segoe UI', sans-serif;
+    background: #FAFAFA;
+    margin: 12px;
+}}
+
+.card {{
+    padding: 16px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0px 3px 8px rgba(0,0,0,0.15);
+    margin-top: 14px;
+}}
+
+.step {{
+    padding: 10px;
+    margin-top: 14px;
+    background: #F0F7FF;
+    border-left: 5px solid #1E88E5;
+    border-radius: 6px;
+}}
+
+h2 {{
+    margin-top: 6px;
+    color: #1565C0;
+}}
+</style>
+
+</head>
+<body>
+{content}
+</body>
+</html>
+"""
+
+
+# ===============================================================
+#                  CLASE PRINCIPAL
+# ===============================================================
 
 class VentanaMatrices(QWidget):
-    """
-    Operaciones con matrices:
-      - Suma, Resta, Multiplicación (A × B), Traspuesta (A^T)
-      - Gauss (forma escalonada con pivotes 1 y eliminación inferior)
-      - Gauss-Jordan (RREF) + diagnóstico de sistema (consistente/inconsistente/infinitas)
-      - Multiplicación por escalar (k × A)
-      - Inversa (Gauss-Jordan sobre [A|I])
-    Todas las operaciones muestran pasos claros en el panel de procedimiento.
-    """
 
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("background-color:#F0F4F8; color:#000000;")
-        self.setWindowTitle("Operaciones con Matrices")
+        self.setWindowTitle("Calculadora de Matrices – Material Design")
+        self.setStyleSheet("background-color:#ECEFF1; color:#000;")
+        self._build_ui()
+    # ===============================================================
+    #                     CONSTRUCCIÓN DE UI (Material)
+    # ===============================================================
+    def _build_ui(self):
 
         font_label = QFont("Segoe UI", 14, QFont.Weight.Bold)
-        font_input = QFont("Segoe UI", 12)
-        font_btn   = QFont("Segoe UI", 13, QFont.Weight.Bold)
+        font_btn   = QFont("Segoe UI", 12, QFont.Weight.Medium)
 
-        # --------- Panel dimensiones ---------
-        input_layout = QHBoxLayout(); input_layout.setSpacing(20)
-        corner = QHBoxLayout()
-        corner.setContentsMargins(0, 0, 0, 0)
-        corner.addStretch(1)
-
-        self.btn_eq2mat = QPushButton("Ecuaciones → Matrices")
+        # ---------------- Botón Convertidor ----------------
+        self.btn_eq2mat = QPushButton("Ecuaciones → Matriz A")
+        self.btn_eq2mat.setFont(font_btn)
         self.btn_eq2mat.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_eq2mat.setFixedHeight(36)
-        self.btn_eq2mat.setStyleSheet("background-color:#455A64; color:white; border-radius:12px; padding:6px;")
+        self.btn_eq2mat.setStyleSheet("""
+            QPushButton {
+                background-color: #1E88E5;
+                color: white;
+                border-radius: 10px;
+                padding: 8px 14px;
+            }
+            QPushButton:hover { background-color: #1565C0; }
+        """)
         self.btn_eq2mat.clicked.connect(self._abrir_convertidor_ecuaciones)
 
-        corner.addWidget(self.btn_eq2mat, 0)
-        root = QVBoxLayout(); root.setSpacing(12); root.setContentsMargins(12, 12, 12, 12)
-        root.addLayout(corner)
+        # ===============================================================
+        #                         MATRIZ A
+        # ===============================================================
 
-        # Matriz A
         self.a_widget = QWidget()
-        a_layout = QVBoxLayout(self.a_widget)
-        a_label = QLabel("Matriz A"); a_label.setFont(font_label); a_layout.addWidget(a_label)
+        layoutA = QVBoxLayout(self.a_widget)
 
+        labelA = QLabel("Matriz A")
+        labelA.setFont(font_label)
+        layoutA.addWidget(labelA)
+
+        # Dimensiones
         filaA = QHBoxLayout()
-        filaA.addWidget(QLabel("Filas")); self.filas_A_input = QLineEdit("3")
-        self.filas_A_input.setFixedWidth(60); self.filas_A_input.setFont(font_input)
-        filaA.addWidget(self.filas_A_input); a_layout.addLayout(filaA)
+        filaA.addWidget(QLabel("Filas:"))
+        self.filas_A_input = QLineEdit("3")
+        self.filas_A_input.setFixedWidth(60)
+        filaA.addWidget(self.filas_A_input)
 
         colA = QHBoxLayout()
-        colA.addWidget(QLabel("Columnas")); self.columnas_A_input = QLineEdit("3")
-        self.columnas_A_input.setFixedWidth(60); self.columnas_A_input.setFont(font_input)
-        colA.addWidget(self.columnas_A_input); a_layout.addLayout(colA)
+        colA.addWidget(QLabel("Columnas:"))
+        self.columnas_A_input = QLineEdit("3")
+        self.columnas_A_input.setFixedWidth(60)
+        colA.addWidget(self.columnas_A_input)
 
-        # Matriz B
+        layoutA.addLayout(filaA)
+        layoutA.addLayout(colA)
+
+        # Tabla A
+        self.tabla_A = QTableWidget(3, 3)
+        self._config_tabla(self.tabla_A)
+        layoutA.addWidget(self.tabla_A)
+
+        # ===============================================================
+        #                         MATRIZ B
+        # ===============================================================
+
         self.b_widget = QWidget()
-        b_layout = QVBoxLayout(self.b_widget)
-        b_label = QLabel("Matriz B"); b_label.setFont(font_label); b_layout.addWidget(b_label)
+        layoutB = QVBoxLayout(self.b_widget)
+
+        labelB = QLabel("Matriz B")
+        labelB.setFont(font_label)
+        layoutB.addWidget(labelB)
 
         filaB = QHBoxLayout()
-        filaB.addWidget(QLabel("Filas")); self.filas_B_input = QLineEdit("3")
-        self.filas_B_input.setFixedWidth(60); self.filas_B_input.setFont(font_input)
-        filaB.addWidget(self.filas_B_input); b_layout.addLayout(filaB)
+        filaB.addWidget(QLabel("Filas:"))
+        self.filas_B_input = QLineEdit("3")
+        self.filas_B_input.setFixedWidth(60)
+        filaB.addWidget(self.filas_B_input)
 
         colB = QHBoxLayout()
-        colB.addWidget(QLabel("Columnas")); self.columnas_B_input = QLineEdit("3")
-        self.columnas_B_input.setFixedWidth(60); self.columnas_B_input.setFont(font_input)
-        colB.addWidget(self.columnas_B_input); b_layout.addLayout(colB)
+        colB.addWidget(QLabel("Columnas:"))
+        self.columnas_B_input = QLineEdit("3")
+        self.columnas_B_input.setFixedWidth(60)
+        colB.addWidget(self.columnas_B_input)
 
-        self.a_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.b_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        input_layout.addWidget(self.a_widget, 1)
-        input_layout.addWidget(self.b_widget, 1)
+        layoutB.addLayout(filaB)
+        layoutB.addLayout(colB)
 
-        # --------- Tablas A y B ---------
-        matrices_layout = QHBoxLayout(); matrices_layout.setSpacing(12)
+        # Tabla B
+        self.tabla_B = QTableWidget(3, 3)
+        self._config_tabla(self.tabla_B)
+        layoutB.addWidget(self.tabla_B)
 
-        self.tabla_A = QTableWidget(); self._config_tabla(self.tabla_A, "Matriz A")
-        self.tabla_B = QTableWidget(); self._config_tabla(self.tabla_B, "Matriz B")
+        # Ambas matrices lado a lado
+        matrices_layout = QHBoxLayout()
+        matrices_layout.addWidget(self.a_widget)
+        matrices_layout.addWidget(self.b_widget)
 
-        matrices_layout.addWidget(self.tabla_A, 1)
-        matrices_layout.addWidget(self.tabla_B, 1)
 
-        # --------- Barra de acciones ---------
-        acciones = QHBoxLayout(); acciones.setContentsMargins(0, 10, 0, 10); acciones.setSpacing(10)
+        # ===============================================================
+        #         COMBOBOX + BOTONES DE ACCIONES (Material)
+        # ===============================================================
 
         self.operacion_combo = QComboBox()
+        # 👇 AGREGADO "Modelo Leontief" AQUÍ
         self.operacion_combo.addItems([
             "Suma", "Resta", "Multiplicacion",
-            "Traspuesta", "Gauss", "Gauss-Jordan",
-            "Inversa"
+            "Traspuesta", "Gauss", "Gauss-Jordan", "Inversa",
+            "Modelo Leontief"
         ])
-        self.operacion_combo.setFont(font_input)
-        self.operacion_combo.setFixedWidth(260)
-        self.operacion_combo.setStyleSheet("background-color:#1E88E5; color:white; border-radius:12px; padding:6px;")
+        self.operacion_combo.setFont(font_btn)
+        self.operacion_combo.setStyleSheet("""
+            QComboBox {
+                background:#1E88E5;
+                color:white;
+                border-radius:10px;
+                padding:6px;
+            }
+        """)
 
+        # Botón limpiar
         self.btn_limpiar = QPushButton("Limpiar matrices")
         self.btn_limpiar.setFont(font_btn)
-        self.btn_limpiar.setStyleSheet("background-color:#E53935; color:white; border-radius:12px; padding:8px;")
         self.btn_limpiar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_limpiar.setMinimumHeight(40)
-        self.btn_limpiar.setFixedWidth(180)
+        self.btn_limpiar.setStyleSheet("""
+            QPushButton {
+                background:#E53935;
+                color:white;
+                border-radius:10px;
+                padding:8px 14px;
+            }
+            QPushButton:hover { background:#B71C1C; }
+        """)
+        self.btn_limpiar.clicked.connect(self.limpiar_matrices)
 
+        # Ejecutar
         self.btn_ejecutar = QPushButton("Ejecutar operación")
         self.btn_ejecutar.setFont(font_btn)
-        self.btn_ejecutar.setStyleSheet("background-color:#43A047; color:white; border-radius:12px; padding:8px;")
         self.btn_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_ejecutar.setMinimumHeight(40)
-        self.btn_ejecutar.setFixedWidth(220)
+        self.btn_ejecutar.setStyleSheet("""
+            QPushButton {
+                background:#43A047;
+                color:white;
+                border-radius:10px;
+                padding:8px 14px;
+            }
+            QPushButton:hover { background:#2E7D32; }
+        """)
+        self.btn_ejecutar.clicked.connect(self.ejecutar_operacion)
 
-        acciones.addWidget(self.operacion_combo, 0)
-        acciones.addStretch(1)
-        acciones.addWidget(self.btn_limpiar, 0)
-        acciones.addWidget(self.btn_ejecutar, 0)
+        acciones = QHBoxLayout()
+        acciones.addWidget(self.operacion_combo)
+        acciones.addStretch()
+        acciones.addWidget(self.btn_limpiar)
+        acciones.addWidget(self.btn_ejecutar)
 
-        # --------- Panel de procedimiento ---------
+
+        # ===============================================================
+        #          PANEL SUPERIOR DESACTIVADO + PANEL LATEX
+        # ===============================================================
+
         self.procedimiento_text = QTextEdit()
-        self.procedimiento_text.setFont(QFont("Consolas", 11))
-        self.procedimiento_text.setPlaceholderText("Procedimiento")
-        self.procedimiento_text.setMinimumHeight(260)
-        self.procedimiento_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.procedimiento_text.setStyleSheet("background-color:white; color:#000; border:2px solid #B0BEC5; border-radius:12px;")
+        self.procedimiento_text.setFixedHeight(1)
+        self.procedimiento_text.setStyleSheet(
+            "color:transparent; background:transparent; border:none;"
+        )
 
-        # Layout principal
-        root.addLayout(input_layout)
+        self.procedimiento_web = QWebEngineView()
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self.procedimiento_text)
+        splitter.addWidget(self.procedimiento_web)
+        splitter.setSizes([0, 800])
+
+
+        # ===============================================================
+        #                    LAYOUT PRINCIPAL
+        # ===============================================================
+
+        root = QVBoxLayout()
+        top = QHBoxLayout()
+        top.addStretch()
+        top.addWidget(self.btn_eq2mat)
+
+        root.addLayout(top)
         root.addLayout(matrices_layout)
         root.addLayout(acciones)
-        root.addWidget(self.procedimiento_text, 1)
+        root.addWidget(splitter)
+
         self.setLayout(root)
 
-        # Conexiones
-        self.btn_ejecutar.clicked.connect(self.ejecutar_operacion)
-        self.btn_limpiar.clicked.connect(self.limpiar_matrices)
-        self.filas_A_input.editingFinished.connect(self.actualizar_dimensiones)
-        self.columnas_A_input.editingFinished.connect(self.actualizar_dimensiones)
-        self.filas_B_input.editingFinished.connect(self.actualizar_dimensiones)
-        self.columnas_B_input.editingFinished.connect(self.actualizar_dimensiones)
+        # Carga inicial
+        self._set_html_content("<p>Introduce una matriz o convierte ecuaciones.</p>")
+
+        # Señales
+        for w in [
+            self.filas_A_input, self.columnas_A_input,
+            self.filas_B_input, self.columnas_B_input
+        ]:
+            w.editingFinished.connect(self.actualizar_dimensiones)
+
         self.operacion_combo.currentTextChanged.connect(self._toggle_matrizB)
 
-        # Estado inicial
-        self.actualizar_dimensiones()
-        self._toggle_matrizB()
 
-    # ---------------- Configuración de tablas ----------------
-    def _config_tabla(self, tabla: QTableWidget, titulo: str):
-        tabla.setStyleSheet("background-color:white; border-radius:12px;")
-        tabla.setFont(QFont("Consolas", 12))
-        tabla.setRowCount(3); tabla.setColumnCount(3)
-        tabla.setHorizontalHeaderLabels([f"C{j+1}" for j in range(3)])
-        tabla.setVerticalHeaderLabels([f"F{i+1}" for i in range(3)])
-        tabla.setMinimumSize(220, 180)
-        tabla.setCornerButtonEnabled(False)
-        tabla.setToolTip(titulo)
+    # ===============================================================
+    #               TABLAS ESTILO MATERIAL DESIGN
+    # ===============================================================
+    def _config_tabla(self, tabla: QTableWidget):
+        tabla.setShowGrid(True)
+        tabla.setAlternatingRowColors(True)
+
+        tabla.setMinimumWidth(100)
+        tabla.setMinimumHeight(150)
         tabla.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        tabla.verticalHeader().setDefaultSectionSize(56)
-        self._rellenar_ceros(tabla)
 
-    def _rellenar_ceros(self, tabla: QTableWidget):
-        for i in range(tabla.rowCount()):
-            for j in range(tabla.columnCount()):
-                if tabla.item(i, j) is None:
+        tabla.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        tabla.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        tabla.setStyleSheet("""
+            QTableWidget {
+                background:white;
+                border:2px solid #CFD8DC;
+                border-radius:10px;
+                gridline-color:#B0BEC5;
+                font-size:16px;
+            }
+            QHeaderView::section {
+                background:#ECEFF1;
+                font-weight:bold;
+                padding:6px;
+                border:none;
+                border-right:1px solid #CFD8DC;
+            }
+        """)
+
+    # 👇 IMPORTANTE: nada de Stretch
+        tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        tabla.verticalHeader().setDefaultSectionSize(50)
+
+        filas = tabla.rowCount()
+        columnas = tabla.columnCount()
+
+        tabla.setHorizontalHeaderLabels([str(j + 1) for j in range(columnas)])
+        tabla.setVerticalHeaderLabels([str(i + 1) for i in range(filas)])
+
+        for i in range(filas):
+            for j in range(columnas):
+                item = tabla.item(i, j)
+                if item is None:
+                    item = QTableWidgetItem("0")
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    tabla.setItem(i, j, item)
+                else:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    if not item.text().strip():
+                        item.setText("0")
+
+
+
+    # ===============================================================
+    #                     FUNCIONES UTILITARIAS
+    # ===============================================================
+
+    def _fmt(self, x: Fraction):
+        return str(x.numerator) if x.denominator == 1 else f"{x.numerator}/{x.denominator}"
+
+    def _fmt_latex(self, x):
+        """
+        Devuelve x en LaTeX, soportando Fraction.
+        Se usa para los factores en los pasos: F2 -> F2 - (factor)·F1
+        """
+        if isinstance(x, Fraction):
+            if x.denominator == 1:
+                return str(x.numerator)
+            else:
+                return r"\frac{" + str(x.numerator) + "}{" + str(x.denominator) + "}"
+        else:
+            return str(x)
+
+
+    def _matriz_a_latex(self, M):
+        """
+        Convierte matriz a LaTeX (bmatrix), soportando Fraction.
+        """
+        if not M:
+            return r"\begin{bmatrix}\end{bmatrix}"
+
+        filas = []
+        for fila in M:
+            elems = []
+            for x in fila:
+                if isinstance(x, Fraction):
+                    if x.denominator == 1:
+                        elems.append(str(x.numerator))
+                    else:
+                        elems.append(
+                            r"\frac{" + str(x.numerator) + "}{" + str(x.denominator) + "}"
+                        )
+                else:
+                    elems.append(str(x))
+            filas.append(" & ".join(elems))
+
+        cuerpo = r" \\ ".join(filas)
+        return r"\begin{bmatrix}" + cuerpo + r"\end{bmatrix}"
+
+   
+   
+   # ===============================================================
+   
+   #procedimientos tuanis 
+   
+    def _procedimiento_suma(self, A, B, C):
+        """
+        Devuelve un string HTML con LaTeX mostrando el procedimiento de la suma C = A + B.
+        """
+        m = len(A)
+        n = len(A[0]) if m > 0 else 0
+
+        partes = []
+        partes.append("<h3>Procedimiento: Suma de matrices</h3>")
+
+        # Mostrar A, B y C
+        partes.append(
+            f"<p>\\[ A = {self._matriz_a_latex(A)}, \\quad B = {self._matriz_a_latex(B)} \\]</p>"
+        )
+        partes.append(
+            f"<p>\\[ C = A + B = {self._matriz_a_latex(C)} \\]</p>"
+        )
+
+        partes.append("<p>Elementos de \\(C\\):</p>")
+
+        pasos = []
+        for i in range(m):
+            for j in range(n):
+                a = A[i][j]
+                b = B[i][j]
+                c = C[i][j]
+                pasos.append(
+                    f"\\(c_{{{i+1},{j+1}}} = {self._fmt_latex(a)} + {self._fmt_latex(b)} = {self._fmt_latex(c)}\\)"
+                )
+
+        partes.append("<p>" + "<br>".join(pasos) + "</p>")
+
+        return "\n".join(partes)
+    def _procedimiento_resta(self, A, B, C):
+        """
+        Devuelve un string HTML con LaTeX mostrando el procedimiento de la resta C = A - B.
+        """
+        m = len(A)
+        n = len(A[0]) if m > 0 else 0
+
+        partes = []
+        partes.append("<h3>Procedimiento: Resta de matrices</h3>")
+
+        # Mostrar A, B y C
+        partes.append(
+            f"<p>\\[ A = {self._matriz_a_latex(A)}, \\quad B = {self._matriz_a_latex(B)} \\]</p>"
+        )
+        partes.append(
+            f"<p>\\[ C = A - B = {self._matriz_a_latex(C)} \\]</p>"
+        )
+
+        partes.append("<p>Elementos de \\(C\\):</p>")
+
+        pasos = []
+        for i in range(m):
+            for j in range(n):
+                a = A[i][j]
+                b = B[i][j]
+                c = C[i][j]
+                pasos.append(
+                    f"\\(c_{{{i+1},{j+1}}} = {self._fmt_latex(a)} - {self._fmt_latex(b)} = {self._fmt_latex(c)}\\)"
+                )
+
+        partes.append("<p>" + "<br>".join(pasos) + "</p>")
+
+        return "\n".join(partes)
+    def _procedimiento_multiplicacion(self, A, B, C):
+        """
+        Devuelve un string HTML con LaTeX mostrando el procedimiento de la multiplicación C = A * B.
+        """
+        m = len(A)
+        p = len(B[0]) if B else 0
+        n = len(B)
+
+        partes = []
+        partes.append("<h3>Procedimiento: Multiplicación de matrices</h3>")
+
+        # Mostrar A, B y C
+        partes.append(
+            f"<p>\\[ A = {self._matriz_a_latex(A)}, \\quad B = {self._matriz_a_latex(B)} \\]</p>"
+        )
+        partes.append(
+            f"<p>\\[ C = A \\times B = {self._matriz_a_latex(C)} \\]</p>"
+        )
+
+        partes.append("<p>Elementos de \\(C\\):</p>")
+
+        pasos = []
+        for i in range(m):
+            for j in range(p):
+                sumandos = []
+                for k in range(n):
+                    a = A[i][k]
+                    b = B[k][j]
+                    sumandos.append(f"{self._fmt_latex(a)} \\times {self._fmt_latex(b)}")
+                suma_str = " + ".join(sumandos)
+                c = C[i][j]
+                pasos.append(
+                    f"\\(c_{{{i+1},{j+1}}} = {suma_str} = {self._fmt_latex(c)}\\)"
+                )
+
+        partes.append("<p>" + "<br>".join(pasos) + "</p>")
+
+        return "\n".join(partes)
+    def _procedimiento_traspuesta(self, A, AT):
+        """
+        Devuelve un string HTML con LaTeX mostrando el procedimiento de la traspuesta AT = A^T.
+        """
+        m = len(A)
+        n = len(A[0]) if m > 0 else 0
+
+        partes = []
+        partes.append("<h3>Procedimiento: Traspuesta de una matriz</h3>")
+
+        # Mostrar A y AT
+        partes.append(
+            f"<p>\\[ A = {self._matriz_a_latex(A)} \\]</p>"
+        )
+        partes.append(
+            f"<p>\\[ A^T = {self._matriz_a_latex(AT)} \\]</p>"
+        )
+
+        partes.append("<p>Elementos de \\(A^T\\):</p>")
+
+        pasos = []
+        for i in range(m):
+            for j in range(n):
+                a = A[i][j]
+                pasos.append(
+                    f"\\(a^T_{{{j+1},{i+1}}} = a_{{{i+1},{j+1}}} = {self._fmt_latex(a)}\\)"
+                )
+
+        partes.append("<p>" + "<br>".join(pasos) + "</p>")
+
+        return "\n".join(partes)
+    def _procedimiento_inversa(self, A, A_inv):
+        """
+        Devuelve un string HTML con LaTeX mostrando el procedimiento de la inversa A_inv = A^(-1).
+        """
+        partes = []
+        partes.append("<h3>Procedimiento: Inversa de una matriz</h3>")
+
+        # Mostrar A y A_inv
+        partes.append(
+            f"<p>\\[ A = {self._matriz_a_latex(A)} \\]</p>"
+        )
+        partes.append(
+            f"<p>\\[ A^{{-1}} = {self._matriz_a_latex(A_inv)} \\]</p>"
+        )
+
+        partes.append("<p>El procedimiento detallado de cálculo de la inversa se omite en esta versión.</p>")
+
+        return "\n".join(partes)
+    
+    # ===============================================================
+        
+
+    def _set_html_content(self, html):
+        self.procedimiento_web.setHtml(HTML_MATHJAX_TEMPLATE.format(content=html))
+
+    def mostrar_procedimiento(self, _ignored=None, latex=None):
+        if latex is None:
+            latex = "<p>Sin contenido.</p>"
+        self._set_html_content(latex)
+
+    def leer_tabla(self, t):
+        M = []
+        for i in range(t.rowCount()):
+            fila = []
+            for j in range(t.columnCount()):
+                try:
+                    fila.append(Fraction(t.item(i, j).text()))
+                except:
+                    fila.append(Fraction(0))
+            M.append(fila)
+        return M
+    # ===============================================================
+    #             ACTUALIZAR DIMENSIONES DE LAS TABLAS
+    # ===============================================================
+    def actualizar_dimensiones(self):
+        try:
+            fA = int(self.filas_A_input.text())
+            cA = int(self.columnas_A_input.text())
+            fB = int(self.filas_B_input.text())
+            cB = int(self.columnas_B_input.text())
+        except:
+            return
+        # Actualizar tabla A
+        self.tabla_A.setRowCount(fA)
+        self.tabla_A.setColumnCount(cA)
+        self._config_tabla(self.tabla_A)
+        #Actualizar tabla B
+        self.tabla_B.setRowCount(fB)
+        self.tabla_B.setColumnCount(cB)
+        self._config_tabla(self.tabla_B)
+        
+        ancho_columna_B = 250   # prueba 250–300
+        for j in range(cB):
+              self.tabla_B.setColumnWidth(j, ancho_columna_B)
+
+         # 👇 Forzar columnas anchas para que haya scroll
+        ancho_columna_A = 250   # prueba 250–300
+        for j in range(cA):
+          self.tabla_A.setColumnWidth(j, ancho_columna_A)
+
+
+
+    # ===============================================================
+    #             MOSTRAR / OCULTAR MATRIZ B AUTOMÁTICO
+    # ===============================================================
+    def _toggle_matrizB(self):
+        solo_A = self.operacion_combo.currentText() in {
+            "Traspuesta", "Gauss", "Gauss-Jordan", "Inversa"
+        }
+        self.b_widget.setVisible(not solo_A)
+
+
+    # ===============================================================
+    #                     LIMPIAR AMBAS MATRICES
+    # ===============================================================
+    def limpiar_matrices(self):
+        for tabla in (self.tabla_A, self.tabla_B):
+            for i in range(tabla.rowCount()):
+                for j in range(tabla.columnCount()):
                     it = QTableWidgetItem("0")
                     it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     tabla.setItem(i, j, it)
 
-    def actualizar_dimensiones(self):
-        try:
-            fA = max(1, int(self.filas_A_input.text()))
-            cA = max(1, int(self.columnas_A_input.text()))
-            fB = max(1, int(self.filas_B_input.text()))
-            cB = max(1, int(self.columnas_B_input.text()))
-        except Exception:
-            return
+        self.mostrar_procedimiento("", "<p class='card'>Matrices reiniciadas.</p>")
+
+
+    # ===============================================================
+    #            CONVERTIDOR ECUACIONES → MATRIZ A (Material)
+    # ===============================================================
     
-
-        # Tabla A
-        self.tabla_A.setRowCount(fA); self.tabla_A.setColumnCount(cA)
-        self.tabla_A.setHorizontalHeaderLabels([f"C{j+1}" for j in range(cA)])
-        self.tabla_A.setVerticalHeaderLabels([f"F{i+1}" for i in range(fA)])
-        self.tabla_A.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self._rellenar_ceros(self.tabla_A)
-
-        # Tabla B
-        self.tabla_B.setRowCount(fB); self.tabla_B.setColumnCount(cB)
-        self.tabla_B.setHorizontalHeaderLabels([f"C{j+1}" for j in range(cB)])
-        self.tabla_B.setVerticalHeaderLabels([f"F{i+1}" for i in range(fB)])
-        self.tabla_B.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self._rellenar_ceros(self.tabla_B)
-
-    def _toggle_matrizB(self):
-        """Oculta Matriz B cuando la operación usa solo A."""
-        solo_A = self.operacion_combo.currentText() in {
-            "Gauss", "Gauss-Jordan", "Traspuesta", "Inversa"
-        }
-        self.b_widget.setVisible(not solo_A)
-        self.tabla_B.setVisible(not solo_A)
-
-    # ---------------- Utilidades ----------------
-    def leer_tabla(self, tabla: QTableWidget):
-        filas, cols = tabla.rowCount(), tabla.columnCount()
-        M = []
-        for i in range(filas):
-            fila = []
-            for j in range(cols):
-                it = tabla.item(i, j)
-                s = it.text().strip() if it and it.text() else "0"
-                try:
-                    fila.append(Fraction(s))
-                except Exception:
-                    fila.append(Fraction(0))
-            M.append(fila)
-        return M
-
-    def _fmt(self, x: Fraction) -> str:
-        return str(x.numerator) if x.denominator == 1 else str(x)
-
-    def mostrar_matriz(self, M):
-        return "\n".join("[ " + "  ".join(self._fmt(x) for x in fila) + " ]" for fila in M)
-
-    def mostrar_procedimiento(self, texto: str):
-        self.procedimiento_text.setPlainText(texto)
-
-        def _scroll():
-            try:
-                cur = self.procedimiento_text.textCursor()
-                cur.movePosition(QTextCursor.MoveOperation.End)
-                self.procedimiento_text.setTextCursor(cur)
-                self.procedimiento_text.ensureCursorVisible()
-                sb = self.procedimiento_text.verticalScrollBar()
-                sb.setValue(sb.maximum())
-            except Exception:
-                pass
-
-        QTimer.singleShot(30, _scroll)
-        QTimer.singleShot(150, _scroll)
-
-    def limpiar_matrices(self):
-        # Restablecer todas las celdas a "0" y limpiar el panel de procedimiento
-        for tabla in (self.tabla_A, self.tabla_B):
-            for i in range(tabla.rowCount()):
-                for j in range(tabla.columnCount()):
-                    it = tabla.item(i, j)
-                    if it is None:
-                        it = QTableWidgetItem("0")
-                        it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        tabla.setItem(i, j, it)
-                    else:
-                        it.setText("0")
-        self.procedimiento_text.clear()
-
     def _abrir_convertidor_ecuaciones(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Convertidor: Ecuación → Matriz")
-        lay = QVBoxLayout(dlg)
+        dlg.setWindowTitle("Convertidor de ecuaciones → Matrices")
 
-        info = QLabel("Pega una ecuación por línea (variables x1, x2, x3, ...). "
-                      "Ejemplos:\n"
-                      "  2x1 - 3x2 + x3 = 7\n"
-                      "  x1 + x3 = 2\n"
-                      "Constantes sin variable también se aceptan (p.ej., +4).")
+        layout = QVBoxLayout(dlg)
+
+        # --- Texto explicativo ---
+        info = QLabel(
+            "Introduce ecuaciones (acepta x, y, z, a1, b2...).\n"
+            "Ejemplo:\n"
+            "x + 2y - z = 8\n"
+            "2x + y = 5\n"
+            "3x + y + 4z = 12"
+        )
         info.setWordWrap(True)
+        layout.addWidget(info)
 
+        # --- Entrada de ecuaciones ---
         eq_edit = QTextEdit()
-        eq_edit.setPlaceholderText("Ejemplo:\n2x1 - 3x2 + x3 = 7\nx1 + x3 = 2")
         eq_edit.setMinimumHeight(120)
+        eq_edit.setStyleSheet("""
+            QTextEdit {
+                background:white;
+                border:2px solid #CFD8DC;
+                border-radius:8px;
+                padding:8px;
+                font-family: Consolas, 'Courier New', monospace;
+                font-size: 13px;
+            }
+        """)
+        layout.addWidget(eq_edit)
 
-        out_box = QPlainTextEdit()
-        out_box.setReadOnly(True)
-        out_box.setPlaceholderText("Matriz aumentada [A|b] aparecerá aquí...")
+        # --- Salida / previsualización ---
+        out = QPlainTextEdit()
+        out.setReadOnly(True)
+        out.setMinimumHeight(120)
+        out.setStyleSheet("""
+            QPlainTextEdit {
+                background:white;
+                border:2px solid #CFD8DC;
+                border-radius:8px;
+                padding:8px;
+                font-family: Consolas, 'Courier New', monospace;
+                font-size: 13px;
+            }
+        """)
+        layout.addWidget(out)
 
+        # --- Botones ---
         btns = QHBoxLayout()
-        btn_convertir = QPushButton("Convertir")
-        btn_copiar = QPushButton("Copiar matriz")
-        btn_cerrar = QPushButton("Cerrar")
-        btns.addWidget(btn_convertir)
-        btns.addStretch(1)
-        btns.addWidget(btn_copiar)
-        btns.addWidget(btn_cerrar)
+        b_convert = QPushButton("Convertir")
+        b_send_A = QPushButton("Enviar a Matriz A")
+        b_send_B = QPushButton("Enviar a Matriz B")
+        b_close = QPushButton("Cerrar")
 
-        lay.addWidget(info)
-        lay.addWidget(eq_edit)
-        lay.addWidget(out_box)
-        lay.addLayout(btns)
+        for b in (b_convert, b_send_A, b_send_B, b_close):
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet("""
+                QPushButton {
+                    background:#1E88E5;
+                    color:white;
+                    padding:8px 14px;
+                    border-radius:10px;
+                }
+                QPushButton:hover { background:#1565C0; }
+            """)
 
-        def _convertir():
+        btns.addWidget(b_convert)
+        btns.addWidget(b_send_A)
+        btns.addWidget(b_send_B)
+        btns.addWidget(b_close)
+        layout.addLayout(btns)
+
+        # ======================================================
+        #        Funciones internas del diálogo
+        # ======================================================
+
+        def convertir():
+            """Solo muestra la matriz [A | b] en texto plano."""
             try:
                 A, b = self._ecuaciones_a_matriz(eq_edit.toPlainText())
-                # Formato bonito [A | b]
-                filas = ["[ " + "  ".join(self._fmt(c) for c in fila) + " | " + self._fmt(bb) + " ]"
-                         for fila, bb in zip(A, b)]
-                bonito = "Matriz aumentada [A|b]:\n" + "\n".join(filas)
-
-                # Solo números (útil para pegar por filas)
-                solo = "\n".join(" ".join(self._fmt(c) for c in (fila + [bb]))
-                                 for fila, bb in zip(A, b))
-
-                out_box.setPlainText(bonito + "\n\nSolo números (A|b):\n" + solo)
+                filas = []
+                for i, fila in enumerate(A):
+                    coef_str = "  ".join(self._fmt(x) for x in fila)
+                    filas.append(f"[ {coef_str} | {self._fmt(b[i])} ]")
+                out.setPlainText("\n".join(filas))
             except Exception as e:
-                out_box.setPlainText(f"Error: {e}")
+                out.setPlainText(f"Error: {e}")
 
-        def _copiar():
-            QGuiApplication.clipboard().setText(out_box.toPlainText())
+        def enviar_a_matriz_A():
+            """
+            Envía SOLO los coeficientes a Matriz A.
+            Matriz A queda de tamaño (n x m) donde m = #variables.
+            """
+            try:
+                A, b = self._ecuaciones_a_matriz(eq_edit.toPlainText())
+                f = len(A)
+                c = len(A[0])
 
-        btn_convertir.clicked.connect(_convertir)
-        btn_copiar.clicked.connect(_copiar)
-        btn_cerrar.clicked.connect(dlg.accept)
+                # Actualizar dimensiones de A
+                self.filas_A_input.setText(str(f))
+                self.columnas_A_input.setText(str(c))
+                self.actualizar_dimensiones()
 
-        dlg.resize(520, 460)
+                # Rellenar tabla A con coeficientes
+                for i in range(f):
+                    for j in range(c):
+                        self.tabla_A.setItem(
+                            i, j,
+                            QTableWidgetItem(self._fmt(A[i][j]))
+                        )
+
+                dlg.accept()
+            except Exception as e:
+                out.setPlainText(f"Error al enviar a Matriz A: {e}")
+
+        def enviar_a_matriz_B():
+            """
+            Envía SOLO el vector de términos independientes a Matriz B
+            como un vector columna (n x 1).
+            """
+            try:
+                A, b = self._ecuaciones_a_matriz(eq_edit.toPlainText())
+                f = len(b)
+
+                # Actualizar dimensiones de B (f x 1)
+                self.filas_B_input.setText(str(f))
+                self.columnas_B_input.setText("1")
+                self.actualizar_dimensiones()
+
+                # Rellenar tabla B con b
+                for i in range(f):
+                    self.tabla_B.setItem(
+                        i, 0,
+                        QTableWidgetItem(self._fmt(b[i]))
+                    )
+
+                dlg.accept()
+            except Exception as e:
+                out.setPlainText(f"Error al enviar a Matriz B: {e}")
+
+        # Conexión de señales
+        b_convert.clicked.connect(convertir)
+        b_send_A.clicked.connect(enviar_a_matriz_A)
+        b_send_B.clicked.connect(enviar_a_matriz_B)
+        b_close.clicked.connect(dlg.accept)
+        
+
+        dlg.resize(520, 500)
         dlg.exec()
 
+    # ===============================================================
+    #        PARSEAR ECUACIONES A MATRIZ (acepta x, y, z, a1, b2...)
+    # ===============================================================
     def _ecuaciones_a_matriz(self, texto: str):
-        lineas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+        """
+        Recibe un bloque de texto con ecuaciones lineales y devuelve:
+          A: matriz de coeficientes  (lista de listas de Fraction)
+          b: vector de términos independientes (lista de Fraction)
+        """
+        # Limpiar líneas vacías
+        lineas = [l.strip() for l in texto.splitlines() if l.strip()]
         if not lineas:
             raise ValueError("No hay ecuaciones.")
 
-        ecuaciones = []
-        max_var = 0
+        todas_variables = []   # orden de variables (x, y, z, a1, ...)
+        ecuaciones = []        # lista de (dic_coefs, constante)
 
         for ln in lineas:
-            s = (ln.replace("−", "-")
-                   .replace("—", "-")
-                   .replace("·", "*")
-                   .replace(" ", ""))
-            if "=" in s:
-                left, right = s.split("=", 1)
+            # Separar lado izquierdo y derecho
+            if "=" in ln:
+                left, right = ln.split("=", 1)
             else:
-                left, right = s, "0"
+                left, right = ln, "0"
 
-            coefL, constL, mL = self._parse_expr_vars_y_const(left)
-            coefR, constR, mR = self._parse_expr_vars_y_const(right)
-            max_var = max(max_var, mL, mR)
+            # Parsear cada lado
+            L, constL, varsL = self._parse_expr_vars_y_const(left)
+            R, constR, varsR = self._parse_expr_vars_y_const(right)
 
-            # Pasar todo a la izquierda: (coefL - coefR)·x = (constR - constL)
-            coefs = {}
-            for k in set(coefL) | set(coefR):
-                coefs[k] = coefL.get(k, Fraction(0)) - coefR.get(k, Fraction(0))
-            const = constR - constL
-            ecuaciones.append((coefs, const))
+            # Acumular variables encontradas
+            for v in varsL + varsR:
+                if v not in todas_variables:
+                    todas_variables.append(v)
 
-        # Construir A y b
+            # Pasar todo al lado izquierdo: L - R = 0  →  (coefs)·x = const
+            coefs = {v: L.get(v, Fraction(0)) - R.get(v, Fraction(0))
+                     for v in set(L) | set(R)}
+            ecuaciones.append((coefs, constR - constL))
+
+        # Construir A y b en el orden de todas_variables
         A, b = [], []
-        for coefs, const in ecuaciones:
-            fila = [Fraction(0) for _ in range(max_var)]
-            for k, v in coefs.items():
-                if k <= 0:
-                    raise ValueError("Las variables deben ser x1, x2, x3, ...")
-                if k - 1 >= len(fila):
-                    fila.extend([Fraction(0)] * (k - len(fila)))
-                fila[k - 1] = v
+        for coefs, cte in ecuaciones:
+            fila = [coefs.get(v, Fraction(0)) for v in todas_variables]
             A.append(fila)
-            b.append(const)
+            b.append(cte)
 
         return A, b
 
     def _parse_expr_vars_y_const(self, expr: str):
-        s = expr
-        var_pat = re.compile(r'([+\-]?)(\d+(?:/\d+)?)?\*?x(\d+)')
+        """
+        Dada una expresión tipo '2x-3y+4' devuelve:
+          coefs: {'x': 2, 'y': -3}
+          const: 4   (Fraction)
+          vars_: ['x', 'y']
+        Acepta variables tipo: x, y, z, a1, b2, var3, etc.
+        """
+        # Quitamos espacios para simplificar
+        expr = expr.replace(" ", "")
+
+        # patrón: signo opcional, coeficiente opcional, *, nombre_variable
+        pat = re.compile(r'([+\-]?)(\d+(?:/\d+)?)?\*?([A-Za-z]\w*)')
+
         coefs = {}
-        max_var = 0
+        vars_ = []
         spans = []
 
-        # Capturar términos con variables
-        for m in var_pat.finditer(s):
+        # Buscar todos los términos con variable
+        for m in pat.finditer(expr):
             sign = -1 if m.group(1) == '-' else 1
-            coef = m.group(2)
-            c = Fraction(coef) if coef else Fraction(1)
-            idx = int(m.group(3))
-            coefs[idx] = coefs.get(idx, Fraction(0)) + sign * c
-            max_var = max(max_var, idx)
+            coef = Fraction(m.group(2)) if m.group(2) else Fraction(1)
+            var = m.group(3)
+
+            coefs[var] = coefs.get(var, Fraction(0)) + sign * coef
+            vars_.append(var)
             spans.append((m.start(), m.end()))
 
-        # Quitar los segmentos de variables y analizar constantes
-        keep = []
-        last = 0
-        for a, b in spans:
-            keep.append(s[last:a])
-            last = b
-        keep.append(s[last:])
-        resto = ''.join(keep)
-
+        # El resto de la expresión (sin términos con variable) son constantes
+        resto = re.sub(pat, "", expr)
         const = Fraction(0)
-        if resto:
-            # constantes sueltas: +5, -3/2, 7, etc.
-            for sign, num in re.findall(r'([+\-]?)(\d+(?:/\d+)?)', resto):
-                c = Fraction(num)
-                const += (-c if sign == '-' else c)
 
-        return coefs, const, max_var
+        # Capturamos cosas tipo +5, -3, +10/7...
+        for sign, num in re.findall(r'([+\-]?)(\d+(?:/\d+)?)', resto):
+            val = Fraction(num)
+            const += -val if sign == '-' else val
 
-    # ---------------- Núcleo Gauss / Gauss-Jordan ----------------
-    def _forward_elimination_make_pivots_one(self, M):
+        return coefs, const, vars_
+
+    # ===============================================================
+    #                          GAUSS
+    # ===============================================================
+    
+    def _gauss_detallado(self, M):
         """
-        Elimina por debajo y normaliza cada fila pivote a 1.
-        Devuelve (pasos, A_escalonada, lista_pivotes_col).
+        Eliminación hacia adelante (Gauss) usando Fraction.
+        Intenta mantener números enteros/humanos antes de normalizar.
         """
-        pasos = []
-        A = copy.deepcopy(M)
+
+        # Trabajar siempre con fracciones exactas
+        A = self._a_fracciones(M)
         n, m = len(A), len(A[0])
         row = 0
         pivots = []
+        pasos = []
 
+        # SNAP — para escribir cada paso en una sola línea + matriz debajo
+        def snap(texto, latex=None):
+            if latex:
+                linea = f"<b>{texto}</b> \\( {latex} \\)"
+            else:
+                linea = f"<b>{texto}</b>"
+
+            pasos.append(
+                "<div class='step' style='margin-bottom:14px;'>"
+                f"<p style='margin:0; padding:6px 0; font-size:17px;'>{linea}</p>"
+                f"<div class='card' style='margin-top:6px;'>$${self._matriz_a_latex(A)}$$</div>"
+                "</div>"
+            )
+
+        snap("Matriz inicial")
+
+        # ---------------------------------------------------------------------
+        #                  RECORRIDO POR COLUMNAS 
+        # ---------------------------------------------------------------------
         for col in range(m):
-            # Buscar pivote != 0 en o debajo de 'row'
+
+            # 1. Buscar pivote diferente de 0
             sel = None
             for r in range(row, n):
                 if A[r][col] != 0:
                     sel = r
                     break
-            if sel is None:
-                continue
 
+            if sel is None:
+                continue # No hay pivote en esta columna
+
+            # Intercambio
             if sel != row:
                 A[row], A[sel] = A[sel], A[row]
-                pasos.append(f"Intercambio F{row+1} ↔ F{sel+1}\n{self.mostrar_matriz(A)}")
+                snap(f"Intercambiar F{row+1} ↔ F{sel+1}")
 
-            piv = A[row][col]
-            if piv != 1:
-                A[row] = [x / piv for x in A[row]]
-                pasos.append(f"F{row+1} ÷ ({self._fmt(piv)})\n{self.mostrar_matriz(A)}")
-
-            # Eliminar debajo
+            # 2. Eliminar filas debajo (Primero eliminamos, luego normalizamos para que se vea el paso "humano")
+            #    Esto permite ver números como el '5' en 0=5 antes de que se convierta en 1.
             for r in range(row + 1, n):
-                factor = A[r][col]
-                if factor != 0:
+                curr_val = A[r][col]
+                piv_val = A[row][col]
+                
+                if curr_val != 0:
+                    factor = curr_val / piv_val  # Factor calculado dinámicamente
                     A[r] = [A[r][j] - factor * A[row][j] for j in range(m)]
-                    pasos.append(f"F{r+1} → F{r+1} - ({self._fmt(factor)})·F{row+1}\n{self.mostrar_matriz(A)}")
+                    snap(
+                        f"F{r+1} → F{r+1} -",
+                        f"({self._fmt_latex(factor)}) \\cdot F{row+1}"
+                    )
+
+            # 3. Normalizar pivote a 1 (SOLO si no es una fila de contradicción 0=k)
+            #    Verificamos si la fila es todo ceros excepto el último término
+            #    Asumimos que la última columna (m-1) es el término independiente.
+            es_contradiccion = False
+            is_all_zeros = True
+            for c_idx in range(m - 1): 
+                if A[row][c_idx] != 0:
+                    is_all_zeros = False
+                    break
+            
+            # Si todo son ceros a la izquierda y el último NO es cero -> Contradicción (ej: 0=5)
+            # En ese caso, NO normalizamos para que el usuario vea el '5'.
+            if is_all_zeros and A[row][-1] != 0:
+                es_contradiccion = True
+
+            # Si NO es contradicción, procedemos a normalizar normalmente
+            if not es_contradiccion:
+                piv = A[row][col]
+                if piv != 1:
+                    A[row] = [x / piv for x in A[row]]
+                    snap(
+                        f"Normalizar F{row+1} dividiendo por",
+                        self._fmt_latex(piv)
+                    )
 
             pivots.append(col)
             row += 1
@@ -443,234 +953,482 @@ class VentanaMatrices(QWidget):
 
         return pasos, A, pivots
 
-    def _back_elimination(self, A, pivots):
+
+    # ===============================================================
+    #                        BACK ELIMINATION
+    # ===============================================================
+    def _back_gauss(self, A, pivots):
         """
-        Elimina por encima de cada pivote (asume filas pivote ya normalizadas).
-        Devuelve (pasos, A_rref).
+        Fase hacia atrás (Gauss-Jordan).
         """
+        # Copia segura
+        R = self._a_fracciones(A)
         pasos = []
-        R = copy.deepcopy(A)
         n, m = len(R), len(R[0])
 
-        # Cada pivote en fila r está en columna pivots[r]
+        def snap(texto, latex=None):
+            if latex:
+                linea = f"<b>{texto}</b> \\( {latex} \\)"
+            else:
+                linea = f"<b>{texto}</b>"
+
+            pasos.append(
+                "<div class='step' style='margin-bottom:14px;'>"
+                f"<p style='margin:0; padding:6px 0; font-size:17px;'>{linea}</p>"
+                f"<div class='card' style='margin-top:6px;'>$${self._matriz_a_latex(R)}$$</div>"
+                "</div>"
+            )
+
+        snap("Inicio de la fase hacia atrás")
+
         for r in reversed(range(len(pivots))):
             c = pivots[r]
-            # proteger rangos
-            if r >= n or c >= m:
-                continue
+            piv = R[r][c]
+
+            # Asegurar que pivote = 1 (Por si venía "sucio" de la fase Gauss "humana")
+            if piv != 0 and piv != 1:
+                R[r] = [x / piv for x in R[r]]
+                snap(
+                    f"Normalizar F{r+1} (para Gauss-Jordan) dividiendo por",
+                    self._fmt_latex(piv)
+                )
+
+            # Eliminar por encima
             for up in range(r):
                 factor = R[up][c]
                 if factor != 0:
                     R[up] = [R[up][j] - factor * R[r][j] for j in range(m)]
-                    pasos.append(f"F{up+1} → F{up+1} - ({self._fmt(factor)})·F{r+1}\n{self.mostrar_matriz(R)}")
+                    snap(
+                        f"F{up+1} → F{up+1} -",
+                        f"{self._fmt_latex(factor)} \\cdot F{r+1}"
+                    )
+
         return pasos, R
 
-    def _diagnostico_sistema(self, A_rref):
-        """
-        Diagnóstico interpretando la última columna como RHS (Ax = b).
-        Devuelve texto con:
-          - inconsistente / solución única / infinitas soluciones
-          - solución paramétrica cuando aplique
-        """
-        n, m = len(A_rref), len(A_rref[0])
-        if m < 2:
-            return "⚠️ Para diagnóstico, la última columna debe ser el término independiente (RHS)."
 
+    def _a_fracciones(self, M):
+        """
+        Devuelve una copia de M donde cada elemento es Fraction.
+        Acepta int, float, str, etc.
+        """
+        out = []
+        for fila in M:
+            nueva = []
+            for x in fila:
+                if isinstance(x, Fraction):
+                    nueva.append(x)
+                else:
+                    nueva.append(Fraction(x))
+            out.append(nueva)
+        return out
+
+
+    # ===============================================================
+    #                  DIAGNÓSTICO DEL SISTEMA (Gauss)
+    # ===============================================================
+    
+    def _diagnostico(self, A):
+        """
+        Diagnóstico robusto.
+        """
+        if not A or not A[0]:
+            return "<div class='card'>Matriz vacía.</div>"
+
+        n, m = len(A), len(A[0])
         NV = m - 1  # número de variables
-        # Inconsistencia: fila de ceros en coeficientes y RHS != 0
-        for r in range(n):
-            if all(A_rref[r][c] == 0 for c in range(NV)) and A_rref[r][-1] != 0:
-                return "❌ Sistema INCONSISTENTE (no tiene solución)."
 
-        # Detectar columnas pivote
+        # --------- 1) Encontrar columnas pivote  ---------
         pivot_cols = []
+        row_for_pivot = {}
+
         for r in range(n):
-            # índice del primer no-cero en la fila r (en las primeras NV columnas)
             first = None
             for c in range(NV):
-                if A_rref[r][c] != 0:
-                    first = c; break
+                if A[r][c] != 0:
+                    first = c
+                    break
             if first is not None and first not in pivot_cols:
                 pivot_cols.append(first)
+                row_for_pivot[first] = r
 
-        libres = [c for c in range(NV) if c not in pivot_cols]
+        free_cols = [c for c in range(NV) if c not in pivot_cols]
 
-        if not pivot_cols:
-            # todo libre -> infinitas
-            if NV == 0:
-                return "✅ Sistema CONSISTENTE (trivial)."
-            texto = "✅ Infinitas soluciones.\nVariables libres: " + ", ".join(f"x{l+1}" for l in libres)
-            texto += "\nParámetros: " + ", ".join(f"t{i+1}" for i in range(len(libres)))
-            return texto
+        if pivot_cols:
+            pivotes_str = ", ".join(f"x_{c+1}" for c in pivot_cols)
+        else:
+            pivotes_str = "Ninguna."
 
-        if libres:
-            texto = "✅ Infinitas soluciones.\nVariables libres: " + ", ".join(f"x{l+1}" for l in libres) + "\n"
-            # Construcción paramétrica básica a partir de RREF
-            free_to_t = {l: i + 1 for i, l in enumerate(libres)}
-            ecuaciones = []
-            # Tomar filas hasta min(len(pivot_cols), n)
-            for r in range(min(len(pivot_cols), n)):
-                c = pivot_cols[r]
-                rhs = A_rref[r][-1]
-                expr = f"{self._fmt(rhs)}"
-                for l in libres:
-                    coef = A_rref[r][l]
+        if free_cols:
+            libres_vertical = "<br>".join(
+                f"x_{c+1} = variable libre" for c in free_cols
+            )
+        else:
+            libres_vertical = "No hay variables libres."
+
+        # --------- 2) Dependencia lineal  ---------
+        # Esta lógica aplica tanto si el sistema es consistente como si no
+        if free_cols:
+            dep_str = "Sí hay <b>dependencia lineal</b> (más variables que pivotes)."
+        else:
+            dep_str = "No hay <b>dependencia lineal</b> (todas variables básicas)."
+
+        # --------- 3) Comprobar inconsistencia  ---------
+        inconsistente = False
+        for r in range(n):
+            # Verifica si toda la parte izquierda es 0, pero el término final no lo es
+            if all(A[r][c] == 0 for c in range(NV)) and A[r][-1] != 0:
+                inconsistente = True
+                break
+
+        if inconsistente:
+            html = "<div class='card'>"
+            html += "<b>❌ Sistema inconsistente</b><br><br>"
+            html += (
+                "Existe al menos una fila del tipo 0 = b (con b ≠ 0).<br>"
+                "El sistema no tiene solución.<br><br>"
+            )
+            html += f"<b>Pivotes encontrados:</b> {pivotes_str}<br>"
+            # 👇 AÑADIDO: Muestra la dependencia lineal incluso si es inconsistente
+            html += f"<br><b>Dependencia:</b> {dep_str}" 
+            html += "</div>"
+            return html
+
+        # ================= SOLUCIÓN ÚNICA =================
+        if len(pivot_cols) == NV:
+            sol = [None] * NV
+            for c in pivot_cols:
+                r = row_for_pivot[c]
+                # Asegurarnos de que el pivote sea 1 para mostrar la solución limpia
+                # (aunque _back_gauss ya lo hace, esto es por seguridad visual)
+                val = A[r][-1] / A[r][c] 
+                sol[c] = val
+
+            html = "<div class='card'>"
+            html += "<b>✅ Sistema compatible determinado (solución única)</b><br><br>"
+            html += f"<b>Pivotes:</b> {pivotes_str}<br>"
+            html += f"<br><b>Dependencia:</b> {dep_str}<br><br>" # AÑADIDO para consistencia
+            html += "<b>Solución:</b><br><ul>"
+            for i, v in enumerate(sol):
+                html += f"<li>$$ x_{i+1} = {self._fmt_latex(v)} $$</li>"
+            html += "</ul></div>"
+
+            return html
+
+        # ================= INFINITAS SOLUCIONES =================
+        html = "<div class='card'>"
+        html += "<b>✅ Sistema compatible indeterminado (infinitas soluciones)</b><br><br>"
+        html += f"<b>Variables libres:</b><br>{libres_vertical}<br>"
+        html += f"<br><b>Dependencia:</b> {dep_str}<br>" # Ya estaba, pero lo dejamos claro
+
+        if free_cols:
+            html += "<br><b>Representación paramétrica:</b><ul>"
+            for c_piv in pivot_cols:
+                r = row_for_pivot[c_piv]
+                
+                # Normalizar mentalmente si el pivote no fuera 1 (por robustez)
+                piv_val = A[r][c_piv]
+                rhs = A[r][-1] / piv_val
+                
+                expr = f"x_{c_piv+1} = {self._fmt_latex(rhs)}"
+                
+                for c_free in free_cols:
+                    coef = A[r][c_free] / piv_val
                     if coef != 0:
-                        t = free_to_t[l]
-                        signo = "-" if coef > 0 else "+"
-                        expr += f" {signo} {self._fmt(abs(coef))}·t{t}"
-                ecuaciones.append(f"x{c+1} = {expr}")
-            for l, t in free_to_t.items():
-                ecuaciones.append(f"x{l+1} = t{t}")
-            texto += "Solución paramétrica:\n" + "\n".join(ecuaciones)
-            return texto
+                        # Al pasar al otro lado cambia de signo
+                        sign = "-" if coef > 0 else "+"
+                        mag = self._fmt_latex(abs(coef))
+                        expr += f" {sign} {mag} x_{c_free+1}"
 
-        # Solución única
-        sol = [Fraction(0)] * NV
-        used_rows = 0
-        for c in pivot_cols:
-            if used_rows < n:
-                sol[c] = A_rref[used_rows][-1]
-                used_rows += 1
-        return "✅ Solución única:\n" + "\n".join(f"x{i+1} = {self._fmt(sol[i])}" for i in range(NV))
+                html += f"<li>$$ {expr} $$</li>"
 
-    # ---------------- Acciones ----------------
+            for c_free in free_cols:
+                html += f"<li>$$ x_{c_free+1} = \\text{{libre}} $$</li>"
+            html += "</ul>"
+
+        html += "</div>"
+        return html
+
+
+    # ===============================================================
+    #                  EJECUTAR OPERACIÓN
+    # ===============================================================
     def ejecutar_operacion(self):
         op = self.operacion_combo.currentText()
         A = self.leer_tabla(self.tabla_A)
-        B = self.leer_tabla(self.tabla_B) if self.tabla_B.isVisible() else None
+        B = self.leer_tabla(self.tabla_B)
 
         try:
+            # ---------------- SUMA ----------------
             if op == "Suma":
-                if B is None:
-                    self.mostrar_procedimiento("Error: Matriz B requerida para la suma."); return
-                if len(A) != len(B) or len(A[0]) != len(B[0]):
-                    self.mostrar_procedimiento("Error: A y B deben tener mismas dimensiones."); return
                 C = [[A[i][j] + B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
-                pasos = "Matriz A:\n" + self.mostrar_matriz(A) + "\n\nMatriz B:\n" + self.mostrar_matriz(B) + "\n\n"
-                pasos += "Pasos de la suma:\n"
-                for i in range(len(A)):
-                    for j in range(len(A[0])):
-                        pasos += f"({i+1},{j+1}): {self._fmt(A[i][j])} + {self._fmt(B[i][j])} = {self._fmt(C[i][j])}\n"
-                pasos += "\nResultado A + B:\n" + self.mostrar_matriz(C)
-                self.mostrar_procedimiento(pasos)
+                latex = self._procedimiento_suma(A, B, C)
+                self.mostrar_procedimiento("", latex)
 
+            # ---------------- RESTA ----------------
             elif op == "Resta":
-                if B is None:
-                    self.mostrar_procedimiento("Error: Matriz B requerida para la resta."); return
-                if len(A) != len(B) or len(A[0]) != len(B[0]):
-                    self.mostrar_procedimiento("Error: A y B deben tener mismas dimensiones."); return
                 C = [[A[i][j] - B[i][j] for j in range(len(A[0]))] for i in range(len(A))]
-                pasos = "Matriz A:\n" + self.mostrar_matriz(A) + "\n\nMatriz B:\n" + self.mostrar_matriz(B) + "\n\n"
-                pasos += "Pasos de la resta:\n"
-                for i in range(len(A)):
-                    for j in range(len(A[0])):
-                        pasos += f"({i+1},{j+1}): {self._fmt(A[i][j])} - {self._fmt(B[i][j])} = {self._fmt(C[i][j])}\n"
-                pasos += "\nResultado A - B:\n" + self.mostrar_matriz(C)
-                self.mostrar_procedimiento(pasos)
+                latex = self._procedimiento_resta(A, B, C)
+                self.mostrar_procedimiento("", latex)
 
+            # ---------------- MULTIPLICACIÓN ----------------
             elif op == "Multiplicacion":
-                if B is None:
-                    self.mostrar_procedimiento("Error: Matriz B requerida para la multiplicación."); return
                 if len(A[0]) != len(B):
-                    self.mostrar_procedimiento("Error: columnas(A) ≠ filas(B)."); return
-                C = [[sum(A[i][k] * B[k][j] for k in range(len(B))) for j in range(len(B[0]))] for i in range(len(A))]
-                pasos = "Matriz A:\n" + self.mostrar_matriz(A) + "\n\nMatriz B:\n" + self.mostrar_matriz(B) + "\n\n"
-                pasos += "Pasos de la multiplicación:\n"
-                for i in range(len(A)):
-                    for j in range(len(B[0])):
-                        sum_str = " + ".join(f"{self._fmt(A[i][k])}·{self._fmt(B[k][j])}" for k in range(len(B)))
-                        pasos += f"({i+1},{j+1}): {sum_str} = {self._fmt(C[i][j])}\n"
-                pasos += "\nResultado A × B:\n" + self.mostrar_matriz(C)
-                self.mostrar_procedimiento(pasos)
+                    raise ValueError(" Número de columnas de A debe ser igual a número de filas de B.")
+                C = [
+                    [sum(A[i][k] * B[k][j] for k in range(len(B)))
+                     for j in range(len(B[0]))]
+                    for i in range(len(A))
+                ]
+                latex = self._procedimiento_multiplicacion(A, B, C)
+                self.mostrar_procedimiento("", latex)
 
+            # ---------------- TRASPUESTA ----------------
             elif op == "Traspuesta":
-                if not A or not A[0]:
-                    self.mostrar_procedimiento("Error: Matriz A vacía o inválida para trasponer."); return
-                filas, cols = len(A), len(A[0])
-                T = [[A[i][j] for i in range(filas)] for j in range(cols)]
-                pasos = "Matriz A:\n" + self.mostrar_matriz(A) + "\n\nPasos de la traspuesta:\n"
-                for i in range(filas):
-                    for j in range(cols):
-                        pasos += f"A({i+1},{j+1}) → T({j+1},{i+1}) = {self._fmt(A[i][j])}\n"
-                pasos += "\nResultado A^T:\n" + self.mostrar_matriz(T)
-                self.mostrar_procedimiento(pasos)
+                T = [[A[i][j] for i in range(len(A))] for j in range(len(A[0]))]
+                latex = self._procedimiento_traspuesta(A, T)
+                self.mostrar_procedimiento("", latex)
 
+            # ---------------- GAUSS ----------------
             elif op == "Gauss":
-                pasos_fwd, A_escalon, pivots = self._forward_elimination_make_pivots_one(A)
-                # Para diagnóstico más claro, llevar a RREF (sin mezclar los pasos de Gauss)
-                _, A_rref = self._back_elimination(A_escalon, pivots)
-                texto = "Pasos (eliminación hacia adelante):\n" + "\n\n".join(pasos_fwd)
-                texto += "\n\nMatriz resultante (escalonada):\n" + self.mostrar_matriz(A_escalon)
-                texto += "\n\nDiagnóstico (asumiendo última columna RHS):\n" + self._diagnostico_sistema(A_rref)
-                self.mostrar_procedimiento(texto)
+                pasos_fwd, escalonada, pivots = self._gauss_detallado(A)
+                latex = "<h2>Gauss</h2>" + "".join(pasos_fwd)
+                latex += "<h3>Resultado Escalonada</h3><div class='card'>"
+                latex += f"$${self._matriz_a_latex(escalonada)}$$</div>"
+                latex += self._diagnostico(escalonada)
+                self.mostrar_procedimiento("", latex)
 
+            # ---------------- GAUSS-JORDAN ----------------
             elif op == "Gauss-Jordan":
-                pasos_fwd, A_escalon, pivots = self._forward_elimination_make_pivots_one(A)
-                pasos_back, A_rref = self._back_elimination(A_escalon, pivots)
-                texto = "Pasos (adelante):\n" + "\n\n".join(pasos_fwd)
-                texto += "\n\nPasos (hacia atrás):\n" + ("\n\n".join(pasos_back) if pasos_back else "(no hubo pasos)")
-                texto += "\n\nMatriz resultante (RREF):\n" + self.mostrar_matriz(A_rref)
-                texto += "\n\nDiagnóstico (asumiendo última columna RHS):\n" + self._diagnostico_sistema(A_rref)
-                self.mostrar_procedimiento(texto)
+                pasos_fwd, escalonada, pivots = self._gauss_detallado(A)
+                pasos_back, rref = self._back_gauss(escalonada, pivots)
+                latex = "<h2>Gauss-Jordan</h2>" + "".join(pasos_fwd + pasos_back)
+                latex += "<h3>Resultado RREF</h3><div class='card'>"
+                latex += f"$${self._matriz_a_latex(rref)}$$</div>"
+                latex += self._diagnostico(rref)
+                self.mostrar_procedimiento("", latex)
 
-            elif op == "Multiplicacion por escalar":
-                esc_str, ok = QInputDialog.getText(self, "Escalar", "Ingrese el escalar (ej: 2, 0.5 o 1/3):")
-                if not ok or esc_str.strip() == "": return
-                try:
-                    k = Fraction(esc_str)
-                except Exception:
-                    self.mostrar_procedimiento("Error: el escalar no es válido (use 2, 0.5 o 1/3).")
-                    return
-                if not A or not A[0]:
-                    self.mostrar_procedimiento("Error: Matriz A vacía o inválida."); return
-                C = [[k * A[i][j] for j in range(len(A[0]))] for i in range(len(A))]
-                pasos = "Matriz A:\n" + self.mostrar_matriz(A) + f"\n\nEscalar k = {self._fmt(k)}\n\nPasos:\n"
-                for i in range(len(A)):
-                    for j in range(len(A[0])):
-                        pasos += f"({i+1},{j+1}): {self._fmt(k)} × {self._fmt(A[i][j])} = {self._fmt(C[i][j])}\n"
-                pasos += "\nResultado k × A:\n" + self.mostrar_matriz(C)
-                self.mostrar_procedimiento(pasos)
-
+            # ---------------- INVERSA ----------------
             elif op == "Inversa":
-                if not A or not A[0]:
-                    self.mostrar_procedimiento("Error: Matriz A vacía o inválida."); return
-                if len(A) != len(A[0]):
-                    self.mostrar_procedimiento("Error: la matriz no es cuadrada, no tiene inversa."); return
-
-                n = len(A)
-                AI = [row[:] + [Fraction(int(i == j)) for j in range(n)] for i, row in enumerate(A)]
-                texto = "Matriz aumentada [A | I]:\n" + self.mostrar_matriz(AI) + "\n\n"
-
-                # Gauss-Jordan sobre [A|I]
-                for i in range(n):
-                    # Pivote: si 0, buscar fila abajo
-                    if AI[i][i] == 0:
-                        swap = None
-                        for k in range(i + 1, n):
-                            if AI[k][i] != 0:
-                                swap = k; break
-                        if swap is None:
-                            self.mostrar_procedimiento("La matriz no tiene inversa (determinante = 0)."); return
-                        AI[i], AI[swap] = AI[swap], AI[i]
-                        texto += f"Intercambio F{i+1} ↔ F{swap+1}\n{self.mostrar_matriz(AI)}\n\n"
-
-                    piv = AI[i][i]
-                    if piv != 1:
-                        AI[i] = [x / piv for x in AI[i]]
-                        texto += f"F{i+1} ÷ ({self._fmt(piv)})\n{self.mostrar_matriz(AI)}\n\n"
-
-                    # Ceros arriba y abajo
-                    for j in range(n):
-                        if j == i: continue
-                        factor = AI[j][i]
-                        if factor != 0:
-                            AI[j] = [AI[j][k] - factor * AI[i][k] for k in range(2 * n)]
-                            texto += f"F{j+1} → F{j+1} - ({self._fmt(factor)})·F{i+1}\n{self.mostrar_matriz(AI)}\n\n"
-
-                inv = [row[n:] for row in AI]
-                texto += "Matriz inversa (A⁻¹):\n" + self.mostrar_matriz(inv)
-                self.mostrar_procedimiento(texto)
+                latex, inv = self._inversa_detallada(A)
+                self.mostrar_procedimiento(latex=latex)
+            
+            # ---------------- MODELO LEONTIEF (NUEVO) ----------------
+            elif op == "Modelo Leontief":
+                latex = self._modelo_leontief(A, B)
+                self.mostrar_procedimiento(latex=latex)
+                
 
         except Exception as e:
-            self.mostrar_procedimiento(f"Error al realizar la operación: {e}")
+            self.mostrar_procedimiento("", f"<div class='card'>Error: {e}</div>")
+    # ===============================================================
+    #        INVERSA DE A (GAUSS–JORDAN SOBRE [A | I])
+    # ===============================================================
+    def _inversa(self, A):
+        """
+        Calcula la inversa de A usando Gauss–Jordan sobre la matriz aumentada [A | I].
+        Devuelve la matriz inversa A^{-1} como lista de listas de Fraction.
+        """
+        n = len(A)
+        if n == 0:
+            raise ValueError("La matriz A está vacía.")
+        if n != len(A[0]):
+            raise ValueError("La matriz no es cuadrada; no tiene inversa.")
+
+        # Construir [A | I]
+        AI = [
+            A[i][:] + [Fraction(int(i == j)) for j in range(n)]
+            for i in range(n)
+        ]
+
+        # Gauss–Jordan sobre la aumentada
+        for i in range(n):
+
+            # Si el pivote es 0, buscar fila abajo
+            if AI[i][i] == 0:
+                swap = None
+                for k in range(i + 1, n):
+                    if AI[k][i] != 0:
+                        swap = k
+                        break
+                if swap is None:
+                    raise ValueError("La matriz no es invertible (det = 0).")
+                AI[i], AI[swap] = AI[swap], AI[i]
+
+            # Normalizar fila pivote
+            piv = AI[i][i]
+            if piv == 0:
+                raise ValueError("La matriz no es invertible (pivote nulo).")
+            AI[i] = [x / piv for x in AI[i]]
+
+            # Hacer ceros arriba y abajo
+            for r in range(n):
+                if r == i:
+                    continue
+                factor = AI[r][i]
+                if factor != 0:
+                    AI[r] = [AI[r][j] - factor * AI[i][j] for j in range(2 * n)]
+
+        # Extraer la parte derecha (I transformada en A^{-1})
+        inv = [fila[n:] for fila in AI]
+        return inv
+    def _inversa_detallada(self, A):
+        """
+        Calcula la inversa de A usando Gauss–Jordan y genera
+        un HTML+LaTeX con el procedimiento paso a paso.
+
+        Devuelve (latex, inv)
+        """
+        n = len(A)
+        if n == 0:
+            raise ValueError("La matriz A está vacía.")
+        if n != len(A[0]):
+            raise ValueError("La matriz no es cuadrada; no tiene inversa.")
+
+        # Construir [A | I] con Fraction
+        AI = [
+            [Fraction(x) for x in A[i]] +
+            [Fraction(int(i == j)) for j in range(n)]
+            for i in range(n)
+        ]
+
+        pasos = []
+
+        def snap(descripcion):
+            pasos.append(f"<div class='step'><b>{descripcion}</b></div>")
+            pasos.append(
+                "<div class='card'>$$" +
+                self._matriz_a_latex(AI) +
+                "$$</div>"
+            )
+
+        latex = "<h2>Inversa de A mediante Gauss–Jordan</h2>"
+
+        # Mostrar A y [A | I] inicial
+        latex += "<h3>Matriz A</h3>"
+        latex += "<div class='card'>$$A = " + self._matriz_a_latex(A) + "$$</div>"
+
+        latex += "<h3>Matriz aumentada inicial [A \\mid I]</h3>"
+        snap("Matriz aumentada inicial [A \\mid I]")
+
+        # Gauss–Jordan sobre la aumentada
+        for i in range(n):
+
+            # Si el pivote es 0, buscar fila abajo
+            if AI[i][i] == 0:
+                swap = None
+                for k in range(i + 1, n):
+                    if AI[k][i] != 0:
+                        swap = k
+                        break
+                if swap is None:
+                    raise ValueError("La matriz no es invertible (det = 0).")
+                AI[i], AI[swap] = AI[swap], AI[i]
+                snap(f"Intercambiamos fila {i+1} con fila {swap+1} para obtener pivote distinto de 0")
+
+            # Normalizar fila pivote
+            piv = AI[i][i]
+            if piv == 0:
+                raise ValueError("La matriz no es invertible (pivote nulo).")
+            AI[i] = [x / piv for x in AI[i]]
+            snap(f"Normalizamos la fila {i+1} dividiendo por el pivote {self._fmt_latex(piv)}")
+
+            # Hacer ceros arriba y abajo
+            for r in range(n):
+                if r == i:
+                    continue
+                factor = AI[r][i]
+                if factor != 0:
+                    AI[r] = [AI[r][j] - factor * AI[i][j] for j in range(2 * n)]
+            snap(f"Anulamos los elementos de la columna {i+1} por encima y por debajo del pivote")
+
+        # Extraer la parte derecha (I transformada en A^{-1})
+        inv = [fila[n:] for fila in AI]
+
+        latex += "".join(pasos)
+
+        latex += "<h3>Resultado final</h3>"
+        latex += "<p>La matriz aumentada ha quedado como \\([I \\mid A^{-1}]\\). "
+        latex += "La parte derecha es la inversa buscada:</p>"
+        latex += "<div class='card'>$$A^{-1} = " + self._matriz_a_latex(inv) + "$$</div>"
+
+        return latex, inv
+
+    # ===============================================================
+    #                  MODELO DE LEONTIEF
+    # ===============================================================
+    def _modelo_leontief(self, A, d):
+        """
+        Resuelve x = (I - A)^(-1) * d
+        A: Matriz de consumo (coeficientes técnicos)
+        d: Vector de demanda final (Matriz B)
+        """
+        # Validación
+        n = len(A)
+        # B viene como lista de listas. Validar que sea nx1
+        if len(d) != n:
+            raise ValueError("El vector de demanda (Matriz B) debe tener el mismo número de filas que A.")
+        # Si d tiene más de una columna, tomamos la primera o lanzamos error
+        if len(d[0]) != 1:
+             raise ValueError("La Matriz B debe ser un vector columna (n x 1) para la demanda final.")
+
+        # 1. Construir (I - A)
+        I_A = []
+        for i in range(n):
+            fila = []
+            for j in range(n):
+                val = Fraction(0)
+                if i == j:
+                    # 1 - Aij
+                    val = Fraction(1) - A[i][j]
+                else:
+                    # - Aij
+                    val = -A[i][j]
+                fila.append(val)
+            I_A.append(fila)
+
+        # 2. Calcular la inversa (I - A)^(-1)
+        try:
+            inversa = self._inversa(I_A) # Reutiliza la función interna _inversa
+        except ValueError:
+             raise ValueError("La matriz (I - A) es singular (determinante 0). El sistema no tiene solución única.")
+
+        # 3. Multiplicar Inversa * d
+        # Inversa es (n x n), d es (n x 1) -> x es (n x 1)
+        x = []
+        for i in range(n):
+            suma = Fraction(0)
+            for k in range(n):
+                # d[k][0] porque d es lista de listas
+                suma += inversa[i][k] * d[k][0]
+            x.append([suma])
+
+        # Generar reporte en LaTeX
+        latex = "<h2>Modelo de Leontief (Input-Output)</h2>"
+        latex += "<p>La ecuación fundamental es: $$ \\mathbf{x} = (\\mathbf{I} - \\mathbf{A})^{-1} \\mathbf{d} $$</p>"
+        
+        latex += "<h3>1. Matriz de Leontief \\((\\mathbf{I} - \\mathbf{A})\\)</h3>"
+        latex += f"<div class='card'>$$ {self._matriz_a_latex(I_A)} $$</div>"
+
+        latex += "<h3>2. Inversa de Leontief \\((\\mathbf{I} - \\mathbf{A})^{-1}\\)</h3>"
+        latex += f"<div class='card'>$$ {self._matriz_a_latex(inversa)} $$</div>"
+
+        latex += "<h3>3. Producción Total Requerida (\\(\\mathbf{x}\\))</h3>"
+        latex += "<p>Multiplicando la inversa por el vector de demanda \\(\\mathbf{d}\\):</p>"
+        latex += f"<div class='card'>$$ {self._matriz_a_latex(x)} $$</div>"
+
+        return latex
+
+
+# ===============================================================
+#                   MAIN DE PRUEBA
+# ===============================================================
+if __name__ == "__main__":
+    import sys
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication(sys.argv)
+
+    ventana = VentanaMatrices()
+    ventana.show()
+
+    sys.exit(app.exec())

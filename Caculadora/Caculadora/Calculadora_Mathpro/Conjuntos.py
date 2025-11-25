@@ -1,178 +1,361 @@
+
+import sys
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextEdit
+    QLineEdit, QPushButton, QFrame, QGridLayout, QMessageBox, QSplitter
 )
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
-from matplotlib_venn import venn2
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+# Matplotlib & Venn
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+try:
+    from matplotlib_venn import venn2
+except ImportError:
+    venn2 = None
+
+# ===============================================================
+#                  PLANTILLA HTML (AZUL)
+# ===============================================================
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+    body {{ font-family: 'Segoe UI', sans-serif; background-color: #ffffff; color: #333; padding: 10px; }}
+    .card {{ 
+        background: #f0f7ff; /* Azul muy pálido */
+        border-left: 5px solid #1E88E5; /* AZUL PRINCIPAL */
+        padding: 15px; 
+        margin-bottom: 15px; 
+        border-radius: 5px; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }}
+    h3 {{ color: #1565C0; border-bottom: 1px solid #BBDEFB; padding-bottom: 5px; margin-top: 0; }}
+    p {{ font-size: 1.1em; line-height: 1.6; }}
+    .empty {{ color: #999; font-style: italic; }}
+</style>
+</head>
+<body>
+{content}
+</body>
+</html>
+"""
 
 class CalculadoraConjuntos(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Calculadora de Conjuntos con Venn")
-        self.setGeometry(100, 100, 750, 650)
-        self.setStyleSheet("background-color: #f7f7f7;")
+        self.setWindowTitle("Calculadora de Conjuntos - MathPro")
+        # Fondo gris azulado muy suave
+        self.setStyleSheet("background-color: #ECEFF1; color: #263238;")
+        
+        if venn2 is None:
+            QMessageBox.critical(self, "Error", "Falta la librería 'matplotlib-venn'.\nInstálala con: pip install matplotlib-venn")
+
         self.initUI()
 
     def initUI(self):
-        # Fuentes
-        font_label = QFont("Arial", 12)
-        font_input = QFont("Arial", 11)
-        font_btn = QFont("Arial", 12, QFont.Weight.Bold)
-        font_result = QFont("Consolas", 12)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
 
-        layout_principal = QVBoxLayout()
-        layout_principal.setContentsMargins(10, 10, 10, 10)
-        layout_principal.setSpacing(10)
+        # ==========================================
+        #  PANEL IZQUIERDO (Entradas y Botones)
+        # ==========================================
+        left_card = QFrame()
+        left_card.setStyleSheet("""
+            QFrame { background-color: white; border-radius: 15px; border: 1px solid #CFD8DC; }
+        """)
+        left_card.setFixedWidth(380)
+        l_layout = QVBoxLayout(left_card)
+        l_layout.setSpacing(15)
 
-        # ----- Entradas -----
-        self.label_a = QLabel("Conjunto A (separar elementos con coma):")
-        self.label_a.setFont(font_label)
+        title = QLabel("Definición de Conjuntos")
+        # Azul fuerte para el título
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1565C0; border: none;")
+        l_layout.addWidget(title)
+
+        # Inputs
+        l_layout.addWidget(QLabel("Conjunto A (separar por comas):", objectName="lbl"))
         self.input_a = QLineEdit()
-        self.input_a.setFont(font_input)
-        self.input_a.setPlaceholderText("Ej: 1, 2, 3")
+        self.input_a.setPlaceholderText("Ej: 1, 2, 3, 4")
+        self._estilar_input(self.input_a)
+        l_layout.addWidget(self.input_a)
 
-        self.label_b = QLabel("Conjunto B (separar elementos con coma):")
-        self.label_b.setFont(font_label)
+        l_layout.addWidget(QLabel("Conjunto B (separar por comas):", objectName="lbl"))
         self.input_b = QLineEdit()
-        self.input_b.setFont(font_input)
-        self.input_b.setPlaceholderText("Ej: 2, 3, 4")
+        self.input_b.setPlaceholderText("Ej: 3, 4, 5, 6")
+        self._estilar_input(self.input_b)
+        l_layout.addWidget(self.input_b)
 
-        layout_principal.addWidget(self.label_a)
-        layout_principal.addWidget(self.input_a)
-        layout_principal.addWidget(self.label_b)
-        layout_principal.addWidget(self.input_b)
+        l_layout.addSpacing(10)
+        
+        # Grid de Botones
+        lbl_ops = QLabel("Operaciones")
+        lbl_ops.setStyleSheet("font-weight: bold; font-size: 14px; border: none; color: #455A64;")
+        l_layout.addWidget(lbl_ops)
 
-        # ----- Botones de operaciones -----
-        layout_botones = QHBoxLayout()
-        layout_botones.setSpacing(5)
+        grid_btns = QGridLayout()
+        grid_btns.setSpacing(10)
 
-        self.btn_union = QPushButton("A ∪ B")
-        self.btn_interseccion = QPushButton("A ∩ B")
-        self.btn_diff_ab = QPushButton("A - B")
-        self.btn_diff_ba = QPushButton("B - A")
+        # --- COLORES AZULES ---
+        # Principal: #1E88E5 (Azul Material)
+        # Secundario: #546E7A (Gris Azulado)
+        # Acento: #039BE5 (Azul Claro)
+        
+        btn_union = self._crear_boton("Unión (A ∪ B)", "#1E88E5")
+        btn_inter = self._crear_boton("Intersección (A ∩ B)", "#1E88E5")
+        btn_diff_a = self._crear_boton("Diferencia (A - B)", "#546E7A")
+        btn_diff_b = self._crear_boton("Diferencia (B - A)", "#546E7A")
+        btn_sim   = self._crear_boton("Dif. Simétrica (A Δ B)", "#546E7A")
+        btn_clear = self._crear_boton("Limpiar Todo", "#B0BEC5") # Gris claro para limpiar
 
-        for btn in [self.btn_union, self.btn_interseccion, self.btn_diff_ab, self.btn_diff_ba]:
-            btn.setFont(font_btn)
-            btn.setStyleSheet(
-                """
-                QPushButton {
-                background-color: #00BFFF;  /* Celeste brillante (DeepSkyBlue) */
-                color: white;
-                border-radius: 5px;
-                padding: 15px;
-    }
-                QPushButton:hover {
-                background-color: #009ACD;  /* Celeste más oscuro al pasar el mouse */
-    }
+        # Conexiones
+        btn_union.clicked.connect(lambda: self.calcular("union"))
+        btn_inter.clicked.connect(lambda: self.calcular("intersection"))
+        btn_diff_a.clicked.connect(lambda: self.calcular("diff_ab"))
+        btn_diff_b.clicked.connect(lambda: self.calcular("diff_ba"))
+        btn_sim.clicked.connect(lambda: self.calcular("symmetric"))
+        btn_clear.clicked.connect(self.limpiar)
 
-                """
-            )
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            layout_botones.addWidget(btn)
+        grid_btns.addWidget(btn_union, 0, 0)
+        grid_btns.addWidget(btn_inter, 0, 1)
+        grid_btns.addWidget(btn_diff_a, 1, 0)
+        grid_btns.addWidget(btn_diff_b, 1, 1)
+        grid_btns.addWidget(btn_sim, 2, 0, 1, 2)
+        grid_btns.addWidget(btn_clear, 3, 0, 1, 2)
 
-        layout_principal.addLayout(layout_botones)
+        l_layout.addLayout(grid_btns)
+        l_layout.addStretch()
+        
+        # ==========================================
+        #  PANEL DERECHO (Gráfico y Resultados)
+        # ==========================================
+        right_card = QFrame()
+        right_card.setStyleSheet("QFrame { background-color: white; border-radius: 15px; border: 1px solid #CFD8DC; }")
+        r_layout = QVBoxLayout(right_card)
+        r_layout.setContentsMargins(5,5,5,5)
 
-        # ----- Área de resultado -----
-        self.resultado = QTextEdit()
-        self.resultado.setFont(font_result)
-        self.resultado.setReadOnly(True)
-        self.resultado.setStyleSheet("background-color: #e0f7fa; border: 1px solid #b2ebf2;")
-        self.resultado.setFixedHeight(100)
+        splitter = QSplitter(Qt.Orientation.Vertical)
 
-        layout_principal.addWidget(QLabel("Resultado:"))
-        layout_principal.addWidget(self.resultado)
-
-        # ----- Área de gráfico Venn -----
-        self.figure, self.ax = plt.subplots(figsize=(5, 5))
+        # 1. Gráfico Venn
+        self.figure = Figure(figsize=(5, 4), dpi=100, facecolor='white')
         self.canvas = FigureCanvas(self.figure)
-        layout_principal.addWidget(self.canvas)
+        self.ax = self.figure.add_subplot(111)
+        self.ax.axis('off')
+        
+        graph_container = QWidget()
+        gl = QVBoxLayout(graph_container)
+        gl.addWidget(QLabel("Diagrama de Venn", alignment=Qt.AlignmentFlag.AlignCenter))
+        gl.addWidget(self.canvas)
+        
+        # 2. Resultados Web (LaTeX)
+        self.web_view = QWebEngineView()
+        self.web_view.setStyleSheet("background: white;")
+        self.web_view.page().setBackgroundColor(Qt.GlobalColor.white)
 
-        # Conectar botones a funciones
-        self.btn_union.clicked.connect(self.oper_union)
-        self.btn_interseccion.clicked.connect(self.oper_interseccion)
-        self.btn_diff_ab.clicked.connect(self.oper_diff_ab)
-        self.btn_diff_ba.clicked.connect(self.oper_diff_ba)
+        splitter.addWidget(graph_container)
+        splitter.addWidget(self.web_view)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 1)
 
-        self.setLayout(layout_principal)
+        r_layout.addWidget(splitter)
 
-    # -------------------------------
-    # Funciones auxiliares
-    # -------------------------------
+        main_layout.addWidget(left_card)
+        main_layout.addWidget(right_card)
+        
+        # Estado inicial
+        self._set_html("<p style='text-align:center; color:#666;'>Ingresa los conjuntos y selecciona una operación.</p>")
+        self.dibujar_venn_vacio()
+
+    # ===============================================================
+    #                  ESTILOS Y HELPERS UI
+    # ===============================================================
+    def _estilar_input(self, widget):
+        widget.setStyleSheet("""
+            QLineEdit {
+                background-color: #FAFAFA; border: 2px solid #CFD8DC; border-radius: 8px;
+                padding: 10px; color: #37474F; font-size: 14px;
+            }
+            QLineEdit:focus { border: 2px solid #29B6F6; background-color: white; }
+        """)
+
+    def _crear_boton(self, texto, color_bg):
+        btn = QPushButton(texto)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Efecto hover oscureciendo un poco el color
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {color_bg}; color: white; border-radius: 8px; 
+                padding: 12px; font-weight: bold; font-size: 13px; border: none;
+            }}
+            QPushButton:hover {{ background-color: {self._darken(color_bg)}; }}
+            QPushButton:pressed {{ background-color: #263238; }}
+        """)
+        return btn
+    
+    def _darken(self, hex_color):
+        # Simple función para oscurecer el color en hover
+        if hex_color == "#1E88E5": return "#1565C0"
+        if hex_color == "#546E7A": return "#455A64"
+        return "#90A4AE"
+
+    def _set_html(self, content):
+        self.web_view.setHtml(HTML_TEMPLATE.format(content=content))
+
+    # ===============================================================
+    #                  LÓGICA MATEMÁTICA
+    # ===============================================================
     def obtener_conjunto(self, texto):
-        """Convierte el texto en conjunto de enteros o strings"""
+        elementos = [e.strip() for e in texto.split(",") if e.strip()]
         conjunto = set()
-        for e in texto.split(","):
-            e = e.strip()
-            if e != "":
-                try:
-                    conjunto.add(int(e))  # intenta convertir a número
-                except ValueError:
-                    conjunto.add(e)  # si no, lo guarda como texto
+        for e in elementos:
+            try:
+                if "." in e: val = float(e)
+                else: val = int(e)
+                conjunto.add(val)
+            except:
+                conjunto.add(e)
         return conjunto
 
-    def dibujar_venn(self, A, B, titulo):
-        """Dibuja el diagrama de Venn"""
+    def formato_set_latex(self, s):
+        if not s: return "\\emptyset"
+        try:
+            lista = sorted(list(s), key=lambda x: (isinstance(x, str), x))
+        except:
+            lista = list(s)
+        return "\\{ " + ", ".join(map(str, lista)) + " \\}"
+
+    # ===============================================================
+    #                  CÁLCULOS Y GRÁFICOS
+    # ===============================================================
+    def calcular(self, operacion):
+        txt_a = self.input_a.text()
+        txt_b = self.input_b.text()
+
+        if not txt_a and not txt_b:
+            self._set_html("<div class='card'><b>Error:</b> Los conjuntos están vacíos.</div>")
+            self.dibujar_venn_vacio()
+            return
+
+        A = self.obtener_conjunto(txt_a)
+        B = self.obtener_conjunto(txt_b)
+
+        res = set()
+        latex_op = ""
+        titulo = ""
+        
+        if operacion == "union":
+            res = A | B
+            latex_op = "A \\cup B"
+            titulo = "Unión"
+        elif operacion == "intersection":
+            res = A & B
+            latex_op = "A \\cap B"
+            titulo = "Intersección"
+        elif operacion == "diff_ab":
+            res = A - B
+            latex_op = "A - B"
+            titulo = "Diferencia A - B"
+        elif operacion == "diff_ba":
+            res = B - A
+            latex_op = "B - A"
+            titulo = "Diferencia B - A"
+        elif operacion == "symmetric":
+            res = A ^ B
+            latex_op = "A \\Delta B"
+            titulo = "Diferencia Simétrica"
+
+        # Generar HTML con color azul en la fórmula
+        html_res = f"""
+        <div class='card'>
+            <h3>Operación: {titulo}</h3>
+            <p><b>Conjunto A:</b> $${self.formato_set_latex(A)}$$</p>
+            <p><b>Conjunto B:</b> $${self.formato_set_latex(B)}$$</p>
+            <hr>
+            <h4>Resultado:</h4>
+            <p style='font-size: 1.3em; color: #1565C0;'>$$ {latex_op} = {self.formato_set_latex(res)} $$</p>
+            <p><b>Cardinalidad:</b> |Resultado| = {len(res)}</p>
+        </div>
+        """
+        self._set_html(html_res)
+        self.dibujar_venn(A, B, operacion)
+
+    def dibujar_venn(self, A, B, operacion):
         self.ax.clear()
+        
+        # Colores
+        color_A = '#4FC3F7' # Celeste claro
+        color_B = '#7986CB' # Indigo claro
+        alpha_base = 0.3
+        alpha_high = 0.9 # Más opaco para resaltar
+
         if not A and not B:
-            self.ax.text(0.5, 0.5, "Conjuntos vacíos",
-                         ha='center', va='center', fontsize=14)
-        elif not A:
-            venn2([set(), B], set_labels=("A", "B"), ax=self.ax)
-        elif not B:
-            venn2([A, set()], set_labels=("A", "B"), ax=self.ax)
-        else:
-            venn2([A, B], set_labels=("A", "B"), ax=self.ax)
-        self.ax.set_title(titulo)
+            self.ax.text(0.5, 0.5, "Conjuntos Vacíos", ha='center', va='center')
+            self.canvas.draw()
+            return
+
+        try:
+            v = venn2([A, B], set_labels=('A', 'B'), ax=self.ax)
+        except:
+            self.ax.text(0.5, 0.5, "Error al graficar", ha='center')
+            self.canvas.draw()
+            return
+
+        if v is None: 
+            self.ax.text(0.5, 0.5, "Sin gráfico", ha='center')
+            self.canvas.draw()
+            return
+
+        for label in v.set_labels:
+            if label: label.set_fontsize(12)
+        for label in v.subset_labels:
+            if label: label.set_fontsize(10)
+
+        # Color base (apagado)
+        for region in ['10', '01', '11']:
+            patch = v.get_patch_by_id(region)
+            if patch:
+                if region == '10': patch.set_color(color_A)
+                elif region == '01': patch.set_color(color_B)
+                elif region == '11': patch.set_color('#5C6BC0')
+                patch.set_alpha(alpha_base)
+
+        # Resaltar selección
+        highlight = []
+        if operacion == "union": highlight = ['10', '01', '11']
+        elif operacion == "intersection": highlight = ['11']
+        elif operacion == "diff_ab": highlight = ['10']
+        elif operacion == "diff_ba": highlight = ['01']
+        elif operacion == "symmetric": highlight = ['10', '01']
+
+        for region in highlight:
+            patch = v.get_patch_by_id(region)
+            if patch:
+                patch.set_alpha(alpha_high)
+                patch.set_edgecolor('#1A237E') # Borde azul oscuro
+                patch.set_linewidth(2)
+
         self.canvas.draw()
 
-    def mostrar_resultado(self, texto, conjunto):
-        """Muestra resultado ordenado en pantalla"""
-        if not conjunto:
-            self.resultado.setText(f"{texto} = ∅ (conjunto vacío)")
-        else:
-            self.resultado.setText(f"{texto} = {sorted(conjunto)}")
+    def dibujar_venn_vacio(self):
+        self.ax.clear()
+        self.ax.text(0.5, 0.5, "Introduce datos para ver el gráfico", 
+                     ha='center', va='center', color='#aaa', fontsize=12)
+        self.canvas.draw()
 
-    # -------------------------------
-    # Funciones de operaciones
-    # -------------------------------
-    def oper_union(self):
-        A = self.obtener_conjunto(self.input_a.text())
-        B = self.obtener_conjunto(self.input_b.text())
-        resultado = A.union(B)
-        self.mostrar_resultado("A ∪ B", resultado)
-        self.dibujar_venn(A, B, "A ∪ B")
+    def limpiar(self):
+        self.input_a.clear()
+        self.input_b.clear()
+        self.dibujar_venn_vacio()
+        self._set_html("<p style='text-align:center;'>Datos limpiados.</p>")
 
-    def oper_interseccion(self):
-        A = self.obtener_conjunto(self.input_a.text())
-        B = self.obtener_conjunto(self.input_b.text())
-        resultado = A.intersection(B)
-        self.mostrar_resultado("A ∩ B", resultado)
-        self.dibujar_venn(A, B, "A ∩ B")
-
-    def oper_diff_ab(self):
-        A = self.obtener_conjunto(self.input_a.text())
-        B = self.obtener_conjunto(self.input_b.text())
-        resultado = A.difference(B)
-        self.mostrar_resultado("A - B", resultado)
-        self.dibujar_venn(A, B, "A - B")
-
-    def oper_diff_ba(self):
-        A = self.obtener_conjunto(self.input_a.text())
-        B = self.obtener_conjunto(self.input_b.text())
-        resultado = B.difference(A)
-        self.mostrar_resultado("B - A", resultado)
-        self.dibujar_venn(A, B, "B - A")
-
-
-# -------------------------------
-# Ejecutar la aplicación
-# -------------------------------
 if __name__ == "__main__":
-    import sys
     app = QApplication(sys.argv)
     ventana = CalculadoraConjuntos()
     ventana.show()
