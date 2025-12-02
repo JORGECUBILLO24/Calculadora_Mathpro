@@ -1,4 +1,3 @@
-
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -17,18 +16,26 @@ import sys
 import pandas as pd
 
 # =============================================================================
-#  CONFIGURACIÓN Y PARSER MATEMÁTICO
+#  CONFIGURACIÓN Y PARSER MATEMÁTICO (MEJORADO)
 # =============================================================================
 
 SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 SUP_SIGNS = "⁻⁺"
+SUP_LETTERS = "ˣʸᶻⁿᵉ"  # <--- NUEVO: Soporte para letras en superíndice
 NORMAL_DIGITS = "0123456789"
 NORMAL_SIGNS = "-+"
-SUP_MAP = str.maketrans(SUP_DIGITS + SUP_SIGNS, NORMAL_DIGITS + NORMAL_SIGNS)
-DIGIT_TO_SUP = str.maketrans(NORMAL_DIGITS + "-", SUP_DIGITS + "⁻")
+NORMAL_LETTERS = "xyzne"
+
+# Mapas de traducción completos
+ALL_SUP = SUP_DIGITS + SUP_SIGNS + SUP_LETTERS
+ALL_NORMAL = NORMAL_DIGITS + NORMAL_SIGNS + NORMAL_LETTERS
+
+SUP_MAP = str.maketrans(ALL_SUP, ALL_NORMAL)
+NORMAL_TO_SUP_MAP = str.maketrans(ALL_NORMAL, ALL_SUP)
 
 def reemplazar_superindices(expr: str) -> str:
-    patt = r"(?P<base>(?:\d+|\w+|[\)\]])+)(?P<sup>[" + SUP_DIGITS + SUP_SIGNS + "]+)"
+    # Detecta base y superíndice (incluyendo letras)
+    patt = r"(?P<base>(?:\d+|\w+|[\)\]])+)(?P<sup>[" + ALL_SUP + "]+)"
     def repl(m):
         base = m.group("base")
         sup = m.group("sup").translate(SUP_MAP)
@@ -36,36 +43,64 @@ def reemplazar_superindices(expr: str) -> str:
     return re.sub(patt, repl, expr)
 
 def normalizar_expresion_usuario(expr: str) -> str:
-    s = expr.strip()
-    if not s:
-        return s
+    s = expr.strip().lower()
+    if not s: return s
+
+    # 1. Símbolos
     s = s.replace("√", "sqrt").replace("∛", "cbrt")
-    s = s.replace("π", "pi")   # ya NO tocamos 'e'
+    s = s.replace("π", "pi")
+    
+    # 2. Protección de 'e' (Euler) vs palabras que contienen 'e'
+    s = re.sub(r"\be\b", "e_val", s) 
+
+    # 3. Superíndices
     s = reemplazar_superindices(s)
     s = s.replace("^", "**")
-    s = re.sub(r"\bln\(", "log(", s)
-    s = re.sub(r"\bsen\(", "sin(", s)
+
+    # 4. Multiplicación Implícita
+    # Número seguido de letra/paréntesis (2x -> 2*x)
+    s = re.sub(r'(\d)([a-z(])', r'\1*\2', s)
+    # Cierre paréntesis seguido de algo ((x)2 -> (x)*2)
+    s = re.sub(r'(\))([a-z0-9(])', r'\1*\2', s)
+
+    # 5. Funciones
+    s = re.sub(r"\bln\b", "log", s)
+    s = re.sub(r"\barcsen\b", "arcsin", s)
+    s = re.sub(r"\bsen\b", "sin", s)
+    s = re.sub(r"\barctg\b", "arctan", s)
+    s = re.sub(r"\btg\b", "tan", s)
+    s = re.sub(r"\bctg\b", "cot", s)
+    s = re.sub(r"\braiz\b", "sqrt", s)
+
     return s
 
 def contexto_matematico():
+    # Usamos NUMPY para robustez gráfica y soporte de arrays
     return {
         "x": 0,
-        "sin": math.sin, "cos": math.cos, "tan": math.tan,
-        "asin": math.asin, "acos": math.acos, "atan": math.atan,
-        "log": math.log, "log10": math.log10, "exp": math.exp,
-        "sqrt": math.sqrt, "abs": abs, "pi": math.pi, "e": math.e,
-        "cbrt": lambda t: math.copysign(abs(t)**(1/3), t)
+        "sin": np.sin, "cos": np.cos, "tan": np.tan,
+        "asin": np.arcsin, "acos": np.arccos, "atan": np.arctan,
+        "sinh": np.sinh, "cosh": np.cosh, "tanh": np.tanh,
+        "log": np.log, "log10": np.log10, "exp": np.exp,
+        "sqrt": np.sqrt, "abs": np.abs, "pi": np.pi, "e": np.e,
+        "e_val": np.e,
+        # Cotangente manual
+        "cot": lambda x: 1 / np.tan(x),
+        # Raíz cúbica segura
+        "cbrt": lambda t: np.cbrt(t) if hasattr(np, 'cbrt') else np.sign(t) * np.abs(t)**(1/3)
     }
 
 def numero_desde_texto(txt: str) -> float:
     expr = normalizar_expresion_usuario(txt)
     try:
-        return float(eval(expr, contexto_matematico()))
+        # Evaluación puntual
+        val = eval(expr, contexto_matematico())
+        return float(val)
     except Exception as e:
         raise ValueError(f"Valor incorrecto: {txt}") from e
 
 # =============================================================================
-#  CAMPO INTELIGENTE
+#  CAMPO INTELIGENTE (SOPORTE LETRAS SUPERÍNDICE)
 # =============================================================================
 
 class CampoMatematico(QLineEdit):
@@ -79,6 +114,7 @@ class CampoMatematico(QLineEdit):
         txt = e.text()
         mods = e.modifiers()
 
+        # Activar modo con Flecha Arriba
         if key == Qt.Key.Key_Up:
             if self._ultima_flecha:
                 self._modo_superindice = True
@@ -90,50 +126,37 @@ class CampoMatematico(QLineEdit):
         self._ultima_flecha = False
 
         if self._modo_superindice:
-            if txt.isdigit():
-                self.insert(txt.translate(DIGIT_TO_SUP))
+            # Si escribes un caracter válido (número, signo O LETRA)
+            if txt in ALL_NORMAL and txt != "":
+                self.insert(txt.translate(NORMAL_TO_SUP_MAP))
                 return
-            if key == Qt.Key.Key_Minus or txt == "-":
-                self.insert("⁻")
-                return
+            
+            # Salir del modo
             if key in (Qt.Key.Key_Down, Qt.Key.Key_Space, Qt.Key.Key_Right, Qt.Key.Key_Plus):
                 self._modo_superindice = False
-                if key == Qt.Key.Key_Down:
-                    return
+                if key == Qt.Key.Key_Down: return
+            
             elif key == Qt.Key.Key_Backspace:
                 pass
             else:
                 self._modo_superindice = False
 
+        # Atajos
         if key == Qt.Key.Key_AsciiCircum:
             self.insert("²")
             return
 
         if mods == Qt.KeyboardModifier.ControlModifier:
-            if key == Qt.Key.Key_R:
-                self.insert("√()")
-                self.setCursorPosition(self.cursorPosition() - 1)
-                return
-            if key == Qt.Key.Key_3:
-                self.insert("∛()")
-                self.setCursorPosition(self.cursorPosition() - 1)
-                return
-            if key == Qt.Key.Key_L:
-                self.insert("ln()")
-                self.setCursorPosition(self.cursorPosition() - 1)
-                return
-            if key == Qt.Key.Key_S:
-                self.insert("sen()")
-                self.setCursorPosition(self.cursorPosition() - 1)
-                return
-            if key == Qt.Key.Key_P:
-                self.insert("π")
-                return
+            if key == Qt.Key.Key_R: self.insert("√()"); self.setCursorPosition(self.cursorPosition() - 1); return
+            if key == Qt.Key.Key_3: self.insert("∛()"); self.setCursorPosition(self.cursorPosition() - 1); return
+            if key == Qt.Key.Key_L: self.insert("ln()"); self.setCursorPosition(self.cursorPosition() - 1); return
+            if key == Qt.Key.Key_S: self.insert("sen()"); self.setCursorPosition(self.cursorPosition() - 1); return
+            if key == Qt.Key.Key_P: self.insert("π"); return
 
         super().keyPressEvent(e)
 
 # =============================================================================
-#  GRÁFICA OPTIMIZADA
+#  GRÁFICA OPTIMIZADA (VECTORIZADA Y SIN ASÍNTOTAS)
 # =============================================================================
 
 class LienzoGrafica(FigureCanvasQTAgg):
@@ -158,49 +181,63 @@ class LienzoGrafica(FigureCanvasQTAgg):
     def graficar_f(self, f, a, b, raiz=None):
         self._configurar_estilo_geogebra()
         span = abs(b - a)
-        if span == 0:
-            span = 10
-        margin = span * 0.2
+        if span == 0: span = 10
+        margin = span * 0.5
         x_min, x_max = a - margin, b + margin
 
-        xs = np.linspace(x_min, x_max, 600)
-        ys = []
-        for x in xs:
-            try:
-                v = f(x)
-                ys.append(v if np.isfinite(v) else np.nan)
-            except Exception:
-                ys.append(np.nan)
-        ys = np.array(ys)
+        # 1. Generación de datos VECTORIZADA (Alta resolución)
+        xs = np.linspace(x_min, x_max, 1000)
+        
+        try:
+            ys = f(xs)
+            if np.isscalar(ys): ys = np.full_like(xs, ys)
+        except:
+            # Fallback a bucle si falla vectorización
+            ys = []
+            for x in xs:
+                try: ys.append(f(x))
+                except: ys.append(np.nan)
+            ys = np.array(ys)
 
+        # 2. Limpieza de datos
+        if np.iscomplexobj(ys): ys = ys.real
+        ys[np.isinf(ys)] = np.nan
+
+        # 3. Detección de ASÍNTOTAS (Corte de líneas verticales)
+        # Si el salto entre dos puntos es muy grande, no dibujar línea
+        threshold = np.nanpercentile(np.abs(ys), 90) * 2
+        if np.isnan(threshold) or threshold < 1: threshold = 10
+        dy = np.abs(np.diff(ys, prepend=ys[0]))
+        ys[dy > threshold] = np.nan
+
+        # 4. Graficar
         self.ax.plot(xs, ys, linewidth=2, color="#1565c0", label="f(x)")
         self.ax.set_xlim(x_min, x_max)
 
+        # 5. Escalado Inteligente Y
         valid_y = ys[np.isfinite(ys)]
         if len(valid_y) > 0:
-            ymean, ystd = np.median(valid_y), np.std(valid_y)
-            mask = (valid_y > ymean - 4 * ystd) & (valid_y < ymean + 4 * ystd)
-            if np.any(mask):
-                f_ys = valid_y[mask]
-                ymin, ymax = f_ys.min(), f_ys.max()
-                pad = (ymax - ymin) * 0.1 if ymax != ymin else 1.0
-                self.ax.set_ylim(ymin - pad, ymax + pad)
+            ymin_p, ymax_p = np.percentile(valid_y, [2, 98])
+            h = ymax_p - ymin_p
+            if h == 0: h = 1.0
+            self.ax.set_ylim(ymin_p - h*0.2, ymax_p + h*0.2)
 
+        # 6. Dibujar Raíz
         if raiz is not None and np.isfinite(raiz):
             try:
-                yr = f(raiz)
-                self.ax.scatter([raiz], [yr], color="#d32f2f", s=80,
-                                zorder=10, edgecolors='white')
-                self.ax.vlines(raiz, 0, yr, colors="#d32f2f", linestyles="--")
-                self.ax.text(raiz, yr, f" x≈{raiz:.4f}", color="#d32f2f",
-                             fontsize=9, fontweight='bold')
-            except Exception:
-                pass
+                yr = float(f(raiz))
+                if np.isfinite(yr):
+                    self.ax.scatter([raiz], [yr], color="#d32f2f", s=80,
+                                    zorder=10, edgecolors='white')
+                    self.ax.vlines(raiz, *self.ax.get_ylim(), colors="#d32f2f", linestyles="--")
+                    self.ax.text(raiz, yr, f" x≈{raiz:.4f}", color="#d32f2f",
+                                 fontsize=9, fontweight='bold', ha='right')
+            except: pass
 
         self.draw_idle()
 
 # =============================================================================
-#  VENTANA PRINCIPAL
+#  VENTANA PRINCIPAL (BISECCIÓN)
 # =============================================================================
 
 class VentanaBiseccion(QWidget):
@@ -391,7 +428,7 @@ class VentanaBiseccion(QWidget):
         QMessageBox.information(self, "Atajos", """
         <h3>Atajos</h3>
         <ul>
-        <li><b>↑+↑</b>: Superíndice</li>
+        <li><b>↑+↑</b>: Superíndice (¡Soporta números y letras como 'x'!)</li>
         <li><b>Ctrl+3</b>: Raíz Cúbica</li>
         <li><b>Ctrl+R</b>: Raíz Cuadrada</li>
         <li><b>Ctrl+S</b>: sen()</li>
@@ -417,6 +454,7 @@ class VentanaBiseccion(QWidget):
         raw = self.le_f.text()
         if not raw.strip():
             raise ValueError("La función f(x) está vacía.")
+        # Usamos contexto numpy para arrays
         code = compile(normalizar_expresion_usuario(raw), "<string>", "eval")
         ctx = contexto_matematico()
         return lambda x: (ctx.update({"x": x}), eval(code, ctx))[1]
@@ -448,13 +486,14 @@ class VentanaBiseccion(QWidget):
         c = '#ef5350'
         try:
             f = self._crear_f()
-            if self.estableciendo_a:
-                if np.isfinite(f(e.xdata)):
+            val = float(f(e.xdata))
+            if np.isfinite(val):
+                if self.estableciendo_a:
                     c = '#66bb6a'
-            elif self.estableciendo_b:
-                fa = f(float(numero_desde_texto(self.le_a.text())))
-                if np.isfinite(f(e.xdata)) and fa * f(e.xdata) < 0:
-                    c = '#66bb6a'
+                elif self.estableciendo_b:
+                    fa = float(f(float(numero_desde_texto(self.le_a.text()))))
+                    if np.isfinite(fa) and fa * val < 0:
+                        c = '#66bb6a'
         except Exception:
             pass
         self.tl = self.cv.ax.axvline(e.xdata, color=c, linestyle='--')
@@ -506,8 +545,8 @@ class VentanaBiseccion(QWidget):
 
             # 3. Verificar f(a) y f(b)
             try:
-                fa = f(a)
-                fb = f(b)
+                fa = float(f(a))
+                fb = float(f(b))
             except Exception as e:
                 QMessageBox.critical(self, "Error al evaluar f(x)",
                                      f"No se pudo evaluar f(x) en el intervalo inicial:\n{e}")
@@ -561,7 +600,7 @@ class VentanaBiseccion(QWidget):
                 c_prev = c
                 c = (a + b) / 2.0
                 try:
-                    fc = f(c)
+                    fc = float(f(c))
                 except Exception as e:
                     QMessageBox.critical(self, "Error en f(c)",
                                          f"No se pudo evaluar f(c) en la iteración {i}:\n{e}")
@@ -593,9 +632,7 @@ class VentanaBiseccion(QWidget):
                 """
                 html_steps.append(step_html)
 
-                # Criterio de parada:
-                #  - |f(c)| < tol_rel  (tolerancia como residuo)
-                #  - o error relativo < tol_pct (en %)
+                # Criterio de parada
                 if abs(fc) < tol_rel or (i > 1 and err < tol_pct):
                     exito = True
                     error_final = err
@@ -702,4 +739,3 @@ if __name__ == "__main__":
     w = VentanaBiseccion()
     w.show()
     sys.exit(app.exec())
-
