@@ -1,585 +1,928 @@
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation
-from PyQt6.QtGui import QFont
+import sys
+import re
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+from sympy import sympify, diff, Symbol, latex
+
+# Intentamos importar pandas para exportar (opcional)
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+    
+
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout,
     QHBoxLayout, QGridLayout, QFrame, QSplitter, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
-    QFileDialog
+    QFileDialog, QGraphicsDropShadowEffect,QSizePolicy
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
+
+# Matplotlib - Configuración
+import matplotlib
+matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
-import numpy as np
-import re
-import math
-import sys
-import pandas as pd
 
 # =============================================================================
-#  CONFIGURACIÓN Y PARSER MATEMÁTICO (MEJORADO - VERSIÓN DEFINITIVA)
+#  MOTOR MATEMÁTICO
 # =============================================================================
 
-SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
-SUP_SIGNS = "⁻⁺"
-SUP_LETTERS = "ˣʸᶻⁿᵉ"  # Soporte para letras en superíndice
-NORMAL_DIGITS = "0123456789"
-NORMAL_SIGNS = "-+"
-NORMAL_LETTERS = "xyzne"
+# Busca esta sección en tu código y reemplázala completa:
 
-# Mapas de traducción
-ALL_SUP = SUP_DIGITS + SUP_SIGNS + SUP_LETTERS
-ALL_NORMAL = NORMAL_DIGITS + NORMAL_SIGNS + NORMAL_LETTERS
-
-SUP_MAP = str.maketrans(ALL_SUP, ALL_NORMAL)
-NORMAL_TO_SUP_MAP = str.maketrans(ALL_NORMAL, ALL_SUP)
-
-def reemplazar_superindices(expr: str) -> str:
-    patt = r"(?P<base>(?:\d+|\w+|[\)\]])+)(?P<sup>[" + ALL_SUP + "]+)"
-    def repl(m):
-        base = m.group("base")
-        sup = m.group("sup").translate(SUP_MAP)
-        return f"{base}**({sup})"
-    return re.sub(patt, repl, expr)
-
-def normalizar_expresion_usuario(expr: str) -> str:
-    # 0. Limpieza inicial y minúsculas
-    s = expr.strip().lower()
-    if not s: return s
-
-    # --- NUEVO: SOPORTE PARA ECUACIONES (=) ---
-    # Si el usuario escribe "e^x - 3 = 0", lo convertimos internamente a "(e^x - 3) - (0)"
-    if "=" in s:
-        # Dividimos en dos partes por el signo igual
-        partes = s.split("=", 1) 
-        lhs = partes[0].strip() # Lado izquierdo
-        rhs = partes[1].strip() # Lado derecho
-        # Creamos la expresión de resta
-        s = f"({lhs}) - ({rhs})"
-
-    # 1. Reemplazos básicos de símbolos matemáticos
-    s = s.replace("√", "sqrt").replace("∛", "cbrt")
-    s = s.replace("π", "pi")
+CHAR_MAP = {
+    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    '+': '⁺', '-': '⁻', '/': '⁄', '=': '⁼',
+    '(': '⁽', ')': '⁾',
     
-    # 2. Protección de 'e' (Euler)
-    # Evita romper palabras como 'sen', 'sec' si contienen 'e'
-    s = re.sub(r"\be\b", "e_val", s) 
+    # Variables y letras para funciones (ln, sen, cos, tan, log, exp, pi)
+    'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 
+    'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ', 
+    'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ', 
+    'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ', 
+    'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+    
+    # Mapeo especial para pi si quisieras escribirlo directo
+    'π': 'pi' # Nota: no existe pi superíndice real en todas las fuentes, 
+               # pero puedes usar 'ᴾ' si prefieres visualmente.
+}
 
-    # 3. Superíndices y potencias
-    s = reemplazar_superindices(s)
-    s = s.replace("^", "**")
+# (El resto de REVERSE_MAP y SUP_CHARS se actualiza solo porque dependen de este diccionario)
+REVERSE_MAP = {v: k for k, v in CHAR_MAP.items()}
+SUP_CHARS = "".join(CHAR_MAP.values())
 
-    # 4. Multiplicación Implícita (Mejorada)
-    # Caso: Número seguido de letra (2x -> 2*x)
-    s = re.sub(r'(\d)([a-z(])', r'\1*\2', s)
-    # Caso: Cierre paréntesis seguido de algo ((x)2 -> (x)*2)
-    s = re.sub(r'(\))([a-z0-9(])', r'\1*\2', s)
 
-    # 5. Funciones (Español -> Inglés/Numpy)
-    s = re.sub(r"\bln\b", "log", s)
-    s = re.sub(r"\barcsen\b", "arcsin", s)
-    s = re.sub(r"\bsen\b", "sin", s)
-    s = re.sub(r"\barctg\b", "arctan", s)
-    s = re.sub(r"\btg\b", "tan", s)
-    s = re.sub(r"\bctg\b", "cot", s)
-    s = re.sub(r"\bcotg\b", "cot", s)
-    s = re.sub(r"\braiz\b", "sqrt", s)
+def _transform_sup_de_python(sup_norm: str) -> str:
+    """
+    Interpreta el texto del exponente ya 'normalizado' desde superíndices.
+    Soporta las variantes:
+      - "-1/2"   -> -1/2        (signo fuera)
+      - "1-/2"   -> (-1)/2      (signo dentro)
+      - "-1-/2"  -> -(-1/2)     (dos signos)
+      - con paréntesis: "-(-1/2)" se deja tal cual
+    """
+    sup_norm = sup_norm.strip()
 
-    return s
+    # Si tiene paréntesis, dejamos que SymPy lo entienda tal cual
+    if "(" in sup_norm or ")" in sup_norm:
+        return sup_norm
 
-def contexto_matematico():
-    # Usamos NUMPY para robustez gráfica y cálculo vectorizado
-    return {
-        "x": 0,
-        "sin": np.sin, "cos": np.cos, "tan": np.tan,
-        "asin": np.arcsin, "acos": np.arccos, "atan": np.arctan,
-        "sinh": np.sinh, "cosh": np.cosh, "tanh": np.tanh,
-        "log": np.log, "log10": np.log10, "exp": np.exp,
-        "sqrt": np.sqrt, "abs": np.abs, "pi": np.pi, "e": np.e,
-        "e_val": np.e,
-        "cot": lambda x: 1 / np.tan(x),
-        "cbrt": lambda t: np.cbrt(t) if hasattr(np, 'cbrt') else np.sign(t) * np.abs(t)**(1/3)
+    if "/" not in sup_norm:
+        return sup_norm
+
+    num, den = sup_norm.split("/", 1)
+    num = num.strip()
+    den = den.strip()
+
+    leading = num.startswith("-")
+    trailing = num.endswith("-")
+    core = num.strip("-").strip()
+
+    if leading and trailing:
+        # -1-  -> -(-1/den)
+        return f"-(-{core})/{den}"
+    elif leading:
+        # -1   -> -(1/den)
+        return f"-({core})/{den}"
+    elif trailing:
+        # 1-   -> (-1)/den
+        return f"(-{core})/{den}"
+    else:
+        return f"{core}/{den}"
+
+
+def normalizar_python(expr: str) -> str:
+    """Convierte entrada visual (con superíndices unicode) a sintaxis Python ejecutable."""
+    s = expr.strip().lower()
+    if not s:
+        return ""
+
+    # Reemplazos básicos
+    s = s.replace("π", "pi").replace("√", "sqrt")
+
+    # Reemplazar 'e' por 'e_val' solo si es una palabra aislada
+    s = re.sub(r'\be\b', 'e_val', s)
+
+    # Manejo de superíndices (x² -> x**(2), x⁻¹⁄² -> x**(-1/2), x⁻¹⁻⁄² -> x**(-(-1/2)))
+    pattern = f"(?P<base>[a-zA-Z0-9_\\)\\]])(?P<sup>[{re.escape(SUP_CHARS)}]+)"
+
+    def repl(m):
+        base = m.group('base')
+        sup_raw = m.group('sup')
+        sup_norm = "".join(REVERSE_MAP.get(ch, ch) for ch in sup_raw)
+        sup_expr = _transform_sup_de_python(sup_norm)
+        return f"{base}**({sup_expr})"
+
+    s = re.sub(pattern, repl, s)
+
+    # Multiplicación implícita: 2x -> 2*x, (x+1)2 -> (x+1)*2, etc
+    s = re.sub(r'(\d)([a-z\(])', r'\1*\2', s)
+    s = re.sub(r'(\))([a-z0-9\(])', r'\1*\2', s)
+
+    # funciones trig / log en español
+    replacements = {
+        r"\bsen\b": "sin",
+        r"\bln\b": "log",
+        r"\btg\b": "tan"
     }
+    for esp, eng in replacements.items():
+        s = re.sub(esp, eng, s)
 
-def numero_desde_texto(txt: str) -> float:
-    expr = normalizar_expresion_usuario(txt)
+    return s.replace("^", "**").replace("⁄", "/")
+
+
+def generar_latex_previsualizacion(expr_visual: str) -> str:
+    """
+    Generador de LaTeX para la vista previa.
+    Soporta:
+      x⁻¹⁄²    -> x^{-\frac{1}{2}}
+      x¹⁻⁄²    -> x^{\frac{-1}{2}}
+      x⁻¹⁻⁄²   -> x^{-\frac{-1}{2}}
+      x⁻(⁻¹⁄²) -> x^{-( -1/2 )} -> x^{-\left(\frac{-1}{2}\right)}
+    """
+    if not expr_visual:
+        return ""
+
+    tex = expr_visual
+    tex = tex.replace("sen", "\\sin").replace("cos", "\\cos").replace("tan", "\\tan")
+    tex = tex.replace("ln", "\\ln").replace("log", "\\ln")
+    tex = tex.replace("sqrt", "\\sqrt").replace("pi", "\\pi")
+
+    pattern = f"([{re.escape(SUP_CHARS)}]+)"
+
+    def repl_latex(m):
+        # Convertimos superíndices unicode a texto "normal"
+        norm_txt = "".join(REVERSE_MAP.get(c, c) for c in m.group(1)).strip()
+
+        # Caso: exponente con paréntesis, lo pasa por SymPy para LaTeX bonito
+        if "(" in norm_txt and ")" in norm_txt:
+            try:
+                expr_sym = sympify(norm_txt)
+                return f"^{{ {latex(expr_sym)} }}"
+            except Exception:
+                return f"^{{ {norm_txt} }}"
+
+        # Caso: fracción tipo (combinaciones con signos)
+        if "/" in norm_txt:
+            num, den = norm_txt.split("/", 1)
+            num = num.strip()
+            den = den.strip()
+
+            leading = num.startswith("-")
+            trailing = num.endswith("-")
+            core = num.strip("-").strip()
+
+            # x⁻¹⁄² -> "-1/2" -> fuera
+            if leading and not trailing:
+                return f"^{{ -\\frac{{{core}}}{{{den}}} }}"
+
+            # x¹⁻⁄² -> "1-" -> dentro
+            if trailing and not leading:
+                return f"^{{ \\frac{{-{core}}}{{{den}}} }}"
+
+            # x⁻¹⁻⁄² -> "-1-" -> dos signos
+            if leading and trailing:
+                return f"^{{ -\\frac{{-{core}}}{{{den}}} }}"
+
+            # sin signos
+            return f"^{{ \\frac{{{num}}}{{{den}}} }}"
+
+        # resto de exponentes normales
+        return f"^{{{norm_txt}}}"
+
+    tex = re.sub(pattern, repl_latex, tex)
+    tex = tex.replace("*", " \\cdot ").replace("exp", "\\exp")
+    return tex
+
+
+def contexto_mat():
+    """Contexto seguro para evaluar expresiones numéricas."""
+    ctx = {k: v for k, v in np.__dict__.items() if callable(v) or isinstance(v, float)}
+    ctx.update({"x": 0, "e_val": np.e, "pi": np.pi, "log": np.log})
+    return ctx
+
+
+def evaluar(expr, x_val):
+    """Evalúa una expresión matemática en un punto x."""
     try:
-        val = eval(expr, contexto_matematico())
+        norm = normalizar_python(expr)
+        ctx = contexto_mat()
+        ctx['x'] = x_val
+        val = eval(compile(norm, "<string>", "eval"), ctx)
         return float(val)
-    except Exception as e:
-        raise ValueError(f"Valor incorrecto: {txt}") from e
+    except Exception:
+        return np.nan
 
 # =============================================================================
-#  CAMPO INTELIGENTE (SOPORTE DE LETRAS SUPERÍNDICE)
+#  COMPONENTES UI
 # =============================================================================
 
-class CampoMatematico(QLineEdit):
+class VisorLatex(QWebEngineView):
     def __init__(self):
         super().__init__()
-        self._ultima_flecha = False 
-        self._modo_superindice = False 
+        self.setFixedHeight(80)
+        self.page().setBackgroundColor(Qt.GlobalColor.transparent)
+        self.setHtml(self._wrap(""))
+
+    def actualizar(self, txt):
+        latex_code = generar_latex_previsualizacion(txt) if txt else "\\text{Escribe tu función...}"
+        self.setHtml(self._wrap(latex_code))
+
+    def _wrap(self, formula):
+        return f"""<html><head>
+        <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+        <script id="MathJax-script" async
+                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+        <style>
+        body {{
+            font-family:'Segoe UI'; color:#1565c0;
+            display:flex; justify-content:center; align-items:center;
+            height:100%; margin:0; font-size:22px;
+        }}
+        </style>
+        </head><body>$$ {formula} $$</body></html>"""
+
+
+class CampoMatematico(QLineEdit):
+    """
+    QLineEdit que permite escribir superíndices Unicode.
+    - Flecha ↑  -> entra en modo superíndice
+    - Flecha ↓  -> sale de modo superíndice
+    - En modo super:
+        - "-" (cualquiera) -> "⁻"
+        - dígitos, +, /, x, y, n, (, ) -> versión super
+    - Ctrl+P -> π
+    """
+    def __init__(self, visor):
+        super().__init__()
+        self.visor = visor
+        self.modo_super = False
+        self.setPlaceholderText("Ej: e²ˣ + ln(x) - 5x⁻¹⁄²")
 
     def keyPressEvent(self, e):
         key = e.key()
-        txt = e.text()
-        mods = e.modifiers()
+        text = e.text()
 
+        # Activar/desactivar superíndice
         if key == Qt.Key.Key_Up:
-            if self._ultima_flecha:
-                self._modo_superindice = True
-                self._ultima_flecha = False
-                return 
-            self._ultima_flecha = True
-            super().keyPressEvent(e)
+            self.modo_super = True
             return
-        self._ultima_flecha = False
+        if key == Qt.Key.Key_Down:
+            self.modo_super = False
+            return
 
-        if self._modo_superindice:
-            if txt in ALL_NORMAL and txt != "":
-                self.insert(txt.translate(NORMAL_TO_SUP_MAP)); 
+        # π (Ctrl+P)
+        if e.modifiers() & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_P:
+            self.insert("π")
+            return
+
+        # ===================== MODO SUPERÍNDICE =====================
+        # ===================== MODO SUPERÍNDICE =====================
+        if self.modo_super:
+
+            # Menos: soporte tecla principal, underscore y keypad
+            if key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore):
+                self.insert(CHAR_MAP['-'])
                 return
-            if key in (Qt.Key.Key_Down, Qt.Key.Key_Space, Qt.Key.Key_Right, Qt.Key.Key_Plus):
-                self._modo_superindice = False
-                if key == Qt.Key.Key_Down: return 
-            elif key == Qt.Key.Key_Backspace: pass
-            else: self._modo_superindice = False
 
-        if key == Qt.Key.Key_AsciiCircum: self.insert("²"); return
-        
-        if mods == Qt.KeyboardModifier.ControlModifier:
-            if key == Qt.Key.Key_R: self.insert("√()"); self.setCursorPosition(self.cursorPosition()-1); return
-            if key == Qt.Key.Key_3: self.insert("∛()"); self.setCursorPosition(self.cursorPosition()-1); return
-            if key == Qt.Key.Key_L: self.insert("ln()"); self.setCursorPosition(self.cursorPosition()-1); return
-            if key == Qt.Key.Key_S: self.insert("sen()"); self.setCursorPosition(self.cursorPosition()-1); return
-            if key == Qt.Key.Key_P: self.insert("π"); return
+            # --- CAMBIO AQUÍ: Convertir a minúscula para asegurar match con el mapa ---
+            txt_low = text.lower() 
+            if txt_low in CHAR_MAP:
+                self.insert(CHAR_MAP[txt_low])
+                return
+            # ------------------------------------------------------------------------
 
+            # Tecla "/"
+            if key == Qt.Key.Key_Slash:
+                self.insert(CHAR_MAP["/"])
+                return
+            
+            # Ignorar otros
+            return
+        # ===================== MODO NORMAL =====================
         super().keyPressEvent(e)
 
 # =============================================================================
-#  GRÁFICA OPTIMIZADA (NUMPY + ANTI-ASÍNTOTAS)
-# =============================================================================
-
-class LienzoGrafica(FigureCanvasQTAgg):
-    def __init__(self, parent=None):
-        fig = Figure(figsize=(5, 3), dpi=100)
-        self.ax = fig.add_subplot(111)
-        super().__init__(fig)
-        self.setParent(parent)
-        self._configurar_estilo_geogebra()
-
-    def _configurar_estilo_geogebra(self):
-        ax = self.ax
-        ax.clear()
-        ax.spines['left'].set_position('zero')
-        ax.spines['bottom'].set_position('zero')
-        ax.spines['right'].set_color('none')
-        ax.spines['top'].set_color('none')
-        ax.grid(True, which='both', linestyle='-', linewidth=0.5, color='#d1d5db', alpha=0.8)
-        ax.tick_params(axis='both', colors='#4b5563', labelsize=9)
-
-    def graficar_f(self, f, x0, raiz=None):
-        self._configurar_estilo_geogebra()
-        
-        # Determinar centro y rango dinámico
-        center = x0 if raiz is None else raiz
-        if np.abs(center) > 1e6: span = np.abs(center)*0.2 
-        else: span = 10
-        
-        x_min, x_max = center - span, center + span
-        
-        # 1. Generación de datos VECTORIZADA
-        xs = np.linspace(x_min, x_max, 1000)
-        try:
-            ys = f(xs)
-            if np.isscalar(ys): ys = np.full_like(xs, ys)
-        except:
-            ys = []
-            for x in xs:
-                try: ys.append(f(x))
-                except: ys.append(np.nan)
-            ys = np.array(ys)
-
-        # 2. Limpieza
-        if np.iscomplexobj(ys): ys = ys.real
-        ys[np.isinf(ys)] = np.nan
-
-        # 3. Anti-Asíntotas
-        threshold = np.nanpercentile(np.abs(ys), 90) * 2
-        if np.isnan(threshold) or threshold < 1: threshold = 10
-        dy = np.abs(np.diff(ys, prepend=ys[0]))
-        ys[dy > threshold] = np.nan
-
-        # 4. Graficar
-        self.ax.plot(xs, ys, linewidth=2, color="#1565c0", label="f(x)")
-        self.ax.set_xlim(x_min, x_max)
-        
-        # 5. Escalado Inteligente Y
-        valid_y = ys[np.isfinite(ys)]
-        if len(valid_y) > 0:
-            ymin_p, ymax_p = np.percentile(valid_y, [2, 98])
-            h = ymax_p - ymin_p
-            if h == 0: h = 1.0
-            self.ax.set_ylim(ymin_p - h*0.2, ymax_p + h*0.2)
-
-        # Puntos de interés
-        try:
-            y0 = float(f(x0))
-            if np.isfinite(y0):
-                self.ax.scatter([x0], [y0], color="#ff9800", s=60, zorder=10, label="x0")
-                self.ax.text(x0, y0, " x0", color="#e65100", fontsize=9, fontweight='bold')
-        except: pass
-
-        if raiz is not None and np.isfinite(raiz):
-            try:
-                yr = float(f(raiz))
-                if np.isfinite(yr):
-                    self.ax.scatter([raiz], [yr], color="#d32f2f", s=80, zorder=10, edgecolors='white')
-                    self.ax.vlines(raiz, *self.ax.get_ylim(), colors="#d32f2f", linestyles="--")
-                    self.ax.text(raiz, yr, f" x≈{raiz:.4f}", color="#d32f2f", fontsize=9, fontweight='bold')
-            except: pass
-        
-        self.draw_idle()
-
-# =============================================================================
-#  VENTANA PRINCIPAL NEWTON-RAPHSON
+#  VENTANA PRINCIPAL
 # =============================================================================
 
 class VentanaNewton(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Calculadora Newton-Raphson Pro")
-        self.resize(1250, 800)
-        
-        self.x0 = None
-        self.seleccionando_x0 = False
-        self._anim_refs = []
-        
-        self.timer_autoplot = QTimer()
-        self.timer_autoplot.setInterval(600)
-        self.timer_autoplot.setSingleShot(True)
-        self.timer_autoplot.timeout.connect(self.graficar_automatico)
+        self.setWindowTitle("Calculadora Newton-Raphson")
+        self.resize(1100, 750)
 
-        self.construir_ui()
-        self._aplicar_estilos()
-        self._animar_entrada()
-        self.conectar_eventos_grafica()
+        self.sel_x0 = False
+        self.linea_mouse = None
 
-    def construir_ui(self):
-        root = QVBoxLayout(self); root.setContentsMargins(15,15,15,15)
-        
+        self.timer = QTimer()
+        self.timer.setInterval(400)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.graficar)
+
+        self.setup_ui()
+        self.aplicar_estilos()
+
+        self.inicializar_plano_fijo()
+        self.conectar_grafica()
+
+    def setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
+
         lbl = QLabel("Método de Newton-Raphson")
-        lbl.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        lbl.setObjectName("H1")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(lbl)
-        
-        split = QSplitter(Qt.Orientation.Horizontal); root.addWidget(split, 1)
 
-        # === IZQ ===
-        izq = QWidget(); v_izq = QVBoxLayout(izq)
-        card = QFrame(); card.setObjectName("Card")
-        grid = QGridLayout(card); grid.setSpacing(12)
-        
-        grid.addWidget(QLabel("Función f(x):"), 0, 0)
-        cont = QWidget(); hf = QHBoxLayout(cont); hf.setContentsMargins(0,0,0,0)
-        self.le_f = CampoMatematico(); self.le_f.setPlaceholderText("Ej: x^3 - 2x - 5")
-        self.le_f.textChanged.connect(self.on_func_change)
-        self.btn_info = QPushButton("?"); self.btn_info.setObjectName("BtnInfo")
-        self.btn_info.setFixedSize(32,32); self.btn_info.clicked.connect(self.mostrar_atajos)
-        hf.addWidget(self.le_f); hf.addWidget(self.btn_info)
-        grid.addWidget(cont, 0, 1, 1, 2)
-        
-        self.lbl_prev = QLabel("..."); self.lbl_prev.setStyleSheet("color:#1565c0;font-weight:bold")
-        grid.addWidget(self.lbl_prev, 1, 1, 1, 2)
-        
-        grid.addWidget(QLabel("Valor Inicial ($x_0$):"), 2, 0)
-        self.le_x0 = CampoMatematico(); bx = QPushButton("🎯 Seleccionar")
-        bx.clicked.connect(self.sel_x0)
-        grid.addWidget(self.le_x0, 2, 1); grid.addWidget(bx, 2, 2)
-        
-        grid.addWidget(QLabel("Tolerancia (%):"), 3, 0)
-        self.le_err = CampoMatematico(); self.le_err.setText("0.01")
-        grid.addWidget(self.le_err, 3, 1)
-        
-        grid.addWidget(QLabel("Iteraciones:"), 4, 0)
-        self.le_iter = CampoMatematico(); self.le_iter.setText("50")
-        grid.addWidget(self.le_iter, 4, 1)
-        v_izq.addWidget(card)
+        split = QSplitter(Qt.Orientation.Horizontal)
+        root.addWidget(split, 1)
 
-        kpi_card = QFrame(); kpi_card.setObjectName("Card")
-        kl = QHBoxLayout(kpi_card)
-        self.k_root = self._mk_kpi("Raíz", "--")
-        self.k_iter = self._mk_kpi("Pasos", "--")
-        self.k_err = self._mk_kpi("Error Final", "--")
-        kl.addWidget(self.k_root); kl.addWidget(self.k_iter); kl.addWidget(self.k_err)
-        v_izq.addWidget(kpi_card)
+        # === IZQUIERDA ===
+        izq = QWidget()
+        vizq = QVBoxLayout(izq)
+        vizq.setContentsMargins(0, 0, 5, 0)
+        vizq.setSpacing(10)
 
-        hbs = QHBoxLayout()
-        self.run_btn = QPushButton("🚀 Resolver"); self.run_btn.setObjectName("BtnRun")
-        self.run_btn.setFixedHeight(50); self.run_btn.clicked.connect(self.resolver)
-        cl_btn = QPushButton("Limpiar"); cl_btn.setFixedHeight(50); cl_btn.clicked.connect(self.limpiar)
-        ex_btn = QPushButton("Excel"); ex_btn.setFixedHeight(50); ex_btn.clicked.connect(self.exportar)
-        hbs.addWidget(self.run_btn, 2); hbs.addWidget(cl_btn, 1); hbs.addWidget(ex_btn, 1)
-        v_izq.addLayout(hbs); v_izq.addStretch()
+        # Card función
+        c_fun = QFrame()
+        c_fun.setObjectName("Card")
+        self.shadow(c_fun)
+        l = QVBoxLayout(c_fun)
+        l.setContentsMargins(10, 10, 10, 10)
+        l.setSpacing(5)
+
+        l.addWidget(QLabel("Función f(x):", objectName="Bold"))
+        self.visor = VisorLatex()
+        self.inp_f = CampoMatematico(self.visor)
+        self.inp_f.textChanged.connect(self.on_change)
+        l.addWidget(self.visor)
+        l.addWidget(self.inp_f)
+        vizq.addWidget(c_fun)
+
+        # Card parámetros
+        c_par = QFrame()
+        c_par.setObjectName("Card")
+        self.shadow(c_par)
+        g = QGridLayout(c_par)
+        g.setContentsMargins(10, 10, 10, 10)
+        g.setVerticalSpacing(8)
+
+        g.addWidget(QLabel("Valor Inicial (x₀):", objectName="Bold"), 0, 0)
+        self.ix0 = QLineEdit("0.5")
+        self.ix0.textChanged.connect(self.trigger)
+
+        self.bx0 = QPushButton(" Seleccionar x₀")
+        self.bx0.clicked.connect(self.act_x0)
+
+        g.addWidget(self.ix0, 0, 1)
+        g.addWidget(self.bx0, 0, 2)
+
+        g.addWidget(QLabel("Tolerancia:", objectName="Bold"), 1, 0)
+        self.itol = QLineEdit("0.0001")
+        g.addWidget(self.itol, 1, 1)
+
+        g.addWidget(QLabel("Iteraciones:", objectName="Bold"), 2, 0)
+        self.iter = QLineEdit("100")
+        g.addWidget(self.iter, 2, 1)
+
+        vizq.addWidget(c_par)
+
+        # Botones calcular / limpiar
+        hbtn = QHBoxLayout()
+        self.b_calc = QPushButton("CALCULAR RAÍZ")
+        self.b_calc.setObjectName("BlueBtn")
+        self.b_calc.setFixedHeight(45)
+        self.b_calc.clicked.connect(self.resolver)
+
+        self.b_clr = QPushButton("Limpiar")
+        self.b_clr.setFixedHeight(45)
+        self.b_clr.clicked.connect(self.limpiar)
+
+        hbtn.addWidget(self.b_calc, 2)
+        hbtn.addWidget(self.b_clr, 1)
+        vizq.addLayout(hbtn)
+
+        # Card resultados
+        self.c_res = QFrame()
+        self.c_res.setObjectName("CardRes")
+        self.shadow(self.c_res)
+        vl_res = QVBoxLayout(self.c_res)
+        vl_res.setContentsMargins(15, 10, 15, 10)
+        vl_res.setSpacing(2)
+
+        l_t1 = QLabel("Raíz Aproximada:")
+        l_t1.setStyleSheet(
+            "color:#666; font-size:11px; font-weight:bold; text-transform:uppercase;")
+        self.lbl_raiz = QLabel("--")
+        self.lbl_raiz.setStyleSheet(
+            "color:#1565c0; font-size:22px; font-weight:bold;")
+
+        l_t2 = QLabel("Iteraciones:")
+        l_t2.setStyleSheet(
+            "color:#666; font-size:11px; font-weight:bold; text-transform:uppercase; margin-top:5px;")
+        self.lbl_iter = QLabel("--")
+        self.lbl_iter.setStyleSheet(
+            "color:#333; font-size:16px; font-weight:bold;")
+
+        vl_res.addWidget(l_t1)
+        vl_res.addWidget(self.lbl_raiz)
+        vl_res.addWidget(l_t2)
+        vl_res.addWidget(self.lbl_iter)
+        vizq.addWidget(self.c_res)
+        vizq.addStretch()
+
         split.addWidget(izq)
 
-        # === DER ===
-        der = QWidget(); v_der = QVBoxLayout(der)
+        # === DERECHA ===
+        der = QWidget()
+        vder = QVBoxLayout(der)
+        vder.setContentsMargins(5, 0, 0, 0)
+
         self.tabs = QTabWidget()
-        
-        t1 = QWidget(); v1 = QVBoxLayout(t1)
-        self.cv = LienzoGrafica(); self.tb = NavigationToolbar(self.cv, self)
-        v1.addWidget(self.tb); v1.addWidget(self.cv)
-        self.tabs.addTab(t1, "📈 Gráfica")
-        
-        t2 = QWidget(); v2 = QVBoxLayout(t2)
+
+        # Tab 1: Gráfica
+        # Tab 1: Gráfica
+        # Tab 1: Gráfica estilo GeoGebra
+        # Tab 1: Gráfica estilo GeoGebra
+        t1 = QWidget()
+        v1 = QVBoxLayout(t1)
+
+        # Tamaño mayor y DPI para líneas más nítidas
+        self.fig = Figure(figsize=(8, 5), dpi=110)
+        self.canvas = FigureCanvasQTAgg(self.fig)
+
+        # Que use todo el espacio disponible
+        self.canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding
+        )
+        self.canvas.setMinimumHeight(480)
+
+        self.ax = self.fig.add_subplot(111)
+        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+
+        v1.addWidget(self.toolbar)
+        v1.addWidget(self.canvas)
+
+        self.tabs.addTab(t1, "📈 Gráfica GeoGebra")
+
+
+
+        # Tab 2: Tabla
+        t2 = QWidget()
+        v2 = QVBoxLayout(t2)
         self.tab = QTableWidget(0, 5)
-        self.tab.setHorizontalHeaderLabels(["#", "x_i", "f(x_i)", "f'(x_i)", "Error(%)"])
+        self.tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tab.setStyleSheet("QTableWidget::item { color: #000000; }")
+
+        self.tab.setHorizontalHeaderLabels(["Iter", "x_n", "f(x_n)", "f'(x_n)", "Error %"])
         self.tab.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tab.verticalHeader().setDefaultSectionSize(35)
+        self.tab.setAlternatingRowColors(True)
         v2.addWidget(self.tab)
-        self.tabs.addTab(t2, "📋 Tabla")
-        
-        t3 = QWidget(); v3 = QVBoxLayout(t3)
+        b_exp = QPushButton("Exportar Excel")
+        b_exp.clicked.connect(self.exportar)
+        v2.addWidget(b_exp, alignment=Qt.AlignmentFlag.AlignRight)
+        self.tabs.addTab(t2, "📋 Tabla de Datos")
+
+        # Tab 3: Procedimiento
+        t3 = QWidget()
+        v3 = QVBoxLayout(t3)
         self.web = QWebEngineView()
-        self.web.setStyleSheet("background-color: #ffffff;")
         v3.addWidget(self.web)
         self.tabs.addTab(t3, "📝 Procedimiento")
-        
-        v_der.addWidget(self.tabs)
+
+        vder.addWidget(self.tabs)
         split.addWidget(der)
-        split.setSizes([450, 800])
+        split.setSizes([350, 1100])
 
-    def _mk_kpi(self, t, v):
-        w = QWidget(); l = QVBoxLayout(w)
-        l1 = QLabel(t); l1.setStyleSheet("color:#666;font-size:11px;text-transform:uppercase")
-        l2 = QLabel(v); l2.setObjectName("KV"); l2.setStyleSheet("font-size:20px;font-weight:bold;color:#1565c0")
-        l2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        l.addWidget(l1); l.addWidget(l2)
-        return w
 
-    def _aplicar_estilos(self):
+    def shadow(self, w):
+        eff = QGraphicsDropShadowEffect()
+        eff.setBlurRadius(15)
+        eff.setOffset(0, 4)
+        eff.setColor(QColor(0, 0, 0, 30))
+        w.setGraphicsEffect(eff)
+
+    def aplicar_estilos(self):
         self.setStyleSheet("""
-            QWidget{background:#f4f6f9;color:#333;font-family:'Segoe UI',sans-serif;font-size:14px}
-            QFrame#Card{background:white;border:1px solid #e0e0e0;border-radius:12px}
-            QLineEdit{border:1px solid #ccc;border-radius:8px;padding:8px;background:#fff}
-            QLineEdit:focus{border:2px solid #1565c0}
-            QPushButton{background:#e9ecef;border:none;border-radius:8px;padding:0 15px;font-weight:600}
-            QPushButton:hover{background:#dee2e6}
-            QPushButton#BtnRun{background:#1565c0;color:white;font-size:16px;font-weight:bold}
-            QPushButton#BtnRun:hover{background:#0d47a1}
-            QPushButton#BtnInfo{background:#e3f2fd;color:#1565c0;border-radius:16px}
-            QTabWidget::pane{border:1px solid #ddd;background:white;border-radius:8px}
-            QTabBar::tab{background:#f1f3f5;padding:10px 15px;margin-right:2px;border-top-left-radius:6px;border-top-right-radius:6px}
-            QTabBar::tab:selected{background:white;border-bottom:3px solid #1565c0;color:#1565c0;font-weight:bold}
-        """)
+        QWidget { font-family: 'Segoe UI'; background: #f4f7f9; color:#333; }
+        QLabel#H1 { font-size:24px; font-weight:bold; color:#1565c0; margin-bottom:5px; }
+        QLabel#Bold { font-weight:bold; color:#444; }
+        QFrame#Card { background:white; border-radius:10px; border:1px solid #e0e0e0; }
+        QFrame#CardRes {
+            background:white; border-radius:10px; border:1px solid #bbdefb;
+            border-left: 5px solid #1565c0;
+        }
+        QLineEdit {
+            border:2px solid #cfd8dc; border-radius:6px;
+            padding:6px; background:white; font-size:14px;
+        }
+        QLineEdit:focus { border-color:#1565c0; }
+        QPushButton {
+            background:white; border:1px solid #cfd8dc;
+            border-radius:6px; font-weight:600; padding:5px;
+        }
+        QPushButton:hover { background:#e3f2fd; border-color:#1565c0; }
+        QPushButton#BlueBtn {
+            background:#1565c0; color:white; border:none; font-size:16px;
+        }
+        QPushButton#BlueBtn:hover { background:#0d47a1; }
 
-    def _animar_entrada(self):
-        a = QPropertyAnimation(self, b"windowOpacity"); a.setDuration(600)
-        a.setStartValue(0); a.setEndValue(1); a.start()
-        self._anim_refs.append(a)
+        /* ====== ESTILO TABLA ====== */
 
-    def mostrar_atajos(self):
-        QMessageBox.information(self, "Atajos", """
-        <h3>Atajos</h3>
-        <ul>
-        <li><b>↑+↑</b>: Superíndice (e⁻²ˣ)</li>
-        <li><b>Ctrl+3</b>: Raíz Cúbica</li>
-        <li><b>Ctrl+R</b>: Raíz Cuadrada</li>
-        <li><b>Ctrl+S</b>: sen()</li>
-        <li><b>Ctrl+L</b>: ln()</li>
-        </ul>
-        """)
+        QTableView {
+            selection-background-color: #004d40;   /* color fila seleccionada */
+            selection-color: #ffffff;              /* texto blanco en selección */
+            gridline-color: #d0d0d0;
+        }
 
-    # --- LÓGICA ---
+        QTableView::item:selected {
+            background: #004d40;
+            color: #ffffff;
+            
+            
+        }
 
-    def on_func_change(self, txt):
-        p = reemplazar_superindices(txt.replace("**","^").replace("*","·"))
-        self.lbl_prev.setText(f"f(x) = {p}" if txt else "...")
-        self.timer_autoplot.start()
+        /* Quitar borde/rectángulo de foco azul */
+        QTableView::item:focus {
+            outline: none;
+        }
+    """)
 
-    def graficar_automatico(self):
-        try: 
-            if self.le_x0.text():
-                x0 = float(numero_desde_texto(self.le_x0.text()))
-                self.cv.graficar_f(self._crear_f(), x0)
-            else:
-                self.cv.graficar_f(self._crear_f(), 0)
-        except: pass
 
-    def _crear_f(self):
-        raw = self.le_f.text()
-        if not raw.strip(): raise ValueError("Función vacía")
-        code = compile(normalizar_expresion_usuario(raw), "<string>", "eval")
-        ctx = contexto_matematico()
-        return lambda x: (ctx.update({"x":x}), eval(code, ctx))[1]
-    
-    def _derivada(self, f, x, h=1e-5):
-        # Derivada numérica centrada simple
-        return (f(x + h) - f(x - h)) / (2 * h)
 
-    def sel_x0(self):
-        self.seleccionando_x0 = True
-        self.run_btn.setEnabled(False)
-        QMessageBox.information(self, "Seleccionar X0", "Haz clic en la gráfica.")
+    # ================= FUNCIONES GRÁFICAS =================
 
-    def conectar_eventos_grafica(self):
-        self.cv.mpl_connect('motion_notify_event', self._hover)
-        self.cv.mpl_connect('button_press_event', self._click)
+    def inicializar_plano_fijo(self):
+        self.ax.clear()
+
+        # Fondo blanco
+        # Fondo blanco
+        self.fig.patch.set_facecolor("white")
+        self.ax.set_facecolor("white")
+
+        # === GRID MAYOR: cada 1, muy suave como GeoGebra ===
+        self.ax.grid(
+            which="major",
+            linestyle="-",
+            linewidth=0.45,
+            color="#d5d5d5"
+        )
+
+        # === GRID MENOR: aún más suave ===
+        self.ax.minorticks_on()
+        self.ax.set_xticks(np.arange(-50, 51, 0.5), minor=True)
+        self.ax.set_yticks(np.arange(-50, 51, 0.5), minor=True)
+
+        self.ax.grid(
+            which="minor",
+            linestyle="-",
+            linewidth=0.25,
+            color="#efefef"
+        )
+
+        # === Ejes más delgados (tipo GeoGebra) ===
+        axis_color = "#333333"
+
+        self.ax.spines["left"].set_position(("data", 0))
+        self.ax.spines["left"].set_linewidth(0.9)   # antes 1.2
+        self.ax.spines["left"].set_color(axis_color)
+
+        self.ax.spines["bottom"].set_position(("data", 0))
+        self.ax.spines["bottom"].set_linewidth(0.9)  # antes 1.2
+        self.ax.spines["bottom"].set_color(axis_color)
+
+        self.ax.spines["top"].set_color("none")
+        self.ax.spines["right"].set_color("none")
+
+        # === Ticks principales (cada 1) ===
+        self.ax.set_xticks(np.arange(-50, 51, 1))
+        self.ax.set_yticks(np.arange(-50, 51, 1))
+
+        # === Ticks menores (cada 0.5) ===
+        self.ax.set_xticks(np.arange(-50, 51, 0.5), minor=True)
+        self.ax.set_yticks(np.arange(-50, 51, 0.5), minor=True)
+
+        # === Estilo de ticks (más finos y números pequeños) ===
+        self.ax.tick_params(
+            axis="both",
+            which="major",
+            length=6,       # antes 8
+            width=0.8,      # antes 1
+            color="#333333",
+            pad=6,          # menos separación
+            labelsize=4     # números más pequeños
+        )
+
+        self.ax.tick_params(
+            axis="both",
+            which="minor",
+            length=1,       # antes 3
+            width=0.3,      # antes 0.6
+            color="#aaaaaa"
+        )
+
+
+        # === Límites visibles ===
+        self.ax.set_xlim(-9, 9)
+        self.ax.set_ylim(-6, 6)
+
+
+        self.canvas.draw()
+
+
+
+
+
+
+
+    def conectar_grafica(self):
+        self.canvas.mpl_connect('button_press_event', self._click)
+        self.canvas.mpl_connect('motion_notify_event', self._hover)
+
+    def act_x0(self):
+        self.sel_x0 = True
+        self.canvas.setCursor(Qt.CursorShape.CrossCursor)
 
     def _hover(self, e):
-        if e.inaxes!=self.cv.ax or not self.seleccionando_x0: return
-        if hasattr(self,'tl') and self.tl: self.tl.remove()
-        self.tl = self.cv.ax.axvline(e.xdata, color='#66bb6a', linestyle='--'); self.cv.draw_idle()
+        if e.inaxes != self.ax:
+            return
+        if not self.sel_x0:
+            return
+        if self.linea_mouse:
+            try:
+                self.linea_mouse.remove()
+            except Exception:
+                pass
+        self.linea_mouse = self.ax.axvline(e.xdata, color='#ff9800', linestyle='--', linewidth=2)
+        self.canvas.draw_idle()
 
     def _click(self, e):
-        if e.inaxes!=self.cv.ax: return
-        if self.seleccionando_x0:
-            self.le_x0.setText(f"{e.xdata:.4f}")
-            self.seleccionando_x0 = False
-            if hasattr(self,'tl') and self.tl: self.tl.remove(); self.tl=None
-            self.run_btn.setEnabled(True)
-            self.cv.draw_idle()
+        if e.inaxes != self.ax:
+            return
+        val = f"{e.xdata:.4f}"
+        if self.sel_x0:
+            self.ix0.setText(val)
+            self.sel_x0 = False
+            self.canvas.setCursor(Qt.CursorShape.ArrowCursor)
+            self.graficar()
+
+    def on_change(self, t):
+        self.visor.actualizar(t)
+        self.trigger()
+
+    def trigger(self):
+        self.timer.start()
+
+    def graficar(self):
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+
+        for artist in self.ax.lines + self.ax.collections + self.ax.texts:
+            artist.remove()
+
+        txt = self.inp_f.text()
+        if not txt:
+            self.canvas.draw()
+            return
+
+        try:
+            # Muchísimos puntos para una curva super suave
+            x_calc = np.linspace(xlim[0], xlim[1], 2000)
+            ys = np.array([evaluar(txt, x) for x in x_calc])
+
+            # Evitar blow-up a ±infinito
+            y_span = ylim[1] - ylim[0]
+            ys[np.abs(ys) > ylim[1] + y_span * 2] = np.nan
+
+            # ===================== CURVA PRINCIPAL =====================
+            self.ax.plot(
+                x_calc,
+                ys,
+                color="#007a78",        # color verde azulado
+                linewidth=1.1,         # aqui se controla el grosor
+                solid_capstyle="round",
+                zorder=4 # capa superior del gráfico
+            )
+
+            # ===================== DETECCIÓN DE MÁXIMOS Y MÍNIMOS =====================
+            dy = np.gradient(ys, x_calc)
+            ddy = np.gradient(dy, x_calc)
+
+            # índices donde dy cambia de signo (picos y valles)
+            critical = np.where(np.diff(np.sign(dy)) != 0)[0]
+
+            crit_x = x_calc[critical]
+            crit_y = ys[critical]
+
+            # ===================== PUNTOS TIPO GEOGEBRA =====================
+            self.ax.scatter( # este es el punto gris de los máximos y mínimos
+                crit_x, # coordenadas x de los puntos críticos
+                crit_y, # coordenadas y de los puntos críticos
+                color="#555555", # color gris oscuro
+                s=25, # tamaño de los puntos
+                zorder=4, # capa superior del gráfico
+                edgecolors="white", # borde blanco
+                linewidths=1.1
+            )
+
+            # ================= MARCAR x0 =================
+            if self.ix0.text():
+                try:
+                    x0 = float(self.ix0.text())
+                    self.ax.plot( # punto verde 
+                        x0, 0,
+                        'o',
+                        color='#1b5e20',
+                        markersize=4, # tamaño del punto
+                        markeredgecolor='white',
+                        markeredgewidth=1.3,
+                        zorder=6
+                    )
+                    self.ax.axvline(x0, color='#1b5e20', linestyle='--', alpha=0.7)
+                except Exception:
+                    pass
+
+            self.ax.set_xlim(xlim)
+            self.ax.set_ylim(ylim)
+            self.canvas.draw()
+
+        except Exception:
+            pass
+
+    # ================= CÁLCULO NEWTON-RAPHSON =================
+
+        # ================= CÁLCULO NEWTON-RAPHSON =================
 
     def resolver(self):
-        try:
-            f = self._crear_f()
-            x_i = float(numero_desde_texto(self.le_x0.text()))
-            tol_pct = float(self.le_err.text())
-            tol = tol_pct / 100.0
-            mit = int(self.le_iter.text())
-        except Exception as e:
-            QMessageBox.critical(self,"Error", str(e)); return
-
-        data_rows = []
-        html_steps = []
-        exito = False
-        error_final = 0
-        
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <script>
-        window.MathJax = {
-          tex: {
-            inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
-            displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]
-          },
-          svg: { fontCache: 'global' }
-        };
-        </script>
-        <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-        <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #fff; }
-            .formula-box { border: 2px solid #1565c0; border-radius: 8px; padding: 15px; margin-bottom: 20px; background: #e3f2fd; text-align: center; }
-            .iter-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: #fafafa; }
-            .iter-title { font-weight: bold; color: #1565c0; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; margin-bottom: 10px; }
-            .math-row { margin: 8px 0; font-size: 1.1em; }
-            .success { background-color: #e8f5e9; border: 1px solid #c8e6c9; color: #2e7d32; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; }
-        </style>
-        </head>
-        <body>
-        
-        <div class="formula-box">
-            <h3 style="margin-top:0; color:#0d47a1;">Fórmula General Newton-Raphson</h3>
-            $$ x_{i+1} = x_i - \\frac{f(x_i)}{f'(x_i)} $$
-        </div>
-        """
-
-        for i in range(1, mit + 1):
-            try:
-                y = float(f(x_i))
-                dy = float(self._derivada(f, x_i))
-            except:
-                QMessageBox.warning(self, "Error", "No se pudo evaluar f(x) o f'(x)."); break
-
-            if abs(dy) < 1e-12:
-                QMessageBox.warning(self, "Derivada Cero", f"La derivada es casi 0 en x={x_i:.4f}. El método falla."); break
-
-            x_next = x_i - (y / dy)
-            
-            if i == 1 or x_next == 0: err = 100.0
-            else: err = abs((x_next - x_i) / x_next) * 100.0
-            
-            data_rows.append((i, x_i, y, dy, err))
-
-            step_html = f"""
-            <div class="iter-box">
-                <div class="iter-title">Iteración {i}</div>
-                <div class="math-row">
-                    Valores: $x_{{{i-1}}} = {x_i:.6f}, \\quad f(x_{{{i-1}}}) = {y:.6f}, \\quad f'(x_{{{i-1}}}) = {dy:.6f}$
-                </div>
-                <div class="math-row">
-                    $$x_{{{i}}} = {x_i:.6f} - \\frac{{{y:.6f}}}{{{dy:.6f}}} = \\mathbf{{{x_next:.6f}}}$$
-                </div>
-                <div class="math-row">
-                    Error: $\\varepsilon = {err:.4f}\\%$
-                </div>
-            </div>
-            """
-            html_steps.append(step_html)
-
-            # Criterio de Convergencia
-            if abs(y) < tol or (i > 1 and err < tol_pct):
-                exito = True
-                error_final = err
-                html_steps.append(f"""
-                <div class="success">
-                    <strong>¡Convergencia Alcanzada!</strong><br>
-                    $$x \\approx {x_next:.6f}$$
-                </div>
-                """)
-                # Agregar la fila final para mostrar que f(x_next) es casi 0
-                data_rows.append((i+1, x_next, float(f(x_next)), float(self._derivada(f, x_next)), 0.0))
-                x_i = x_next
-                break
-            
-            x_i = x_next
-
-        html_content += "".join(html_steps) + "</body></html>"
-
-        self.tab.setUpdatesEnabled(False)
+        # Reset visual
         self.tab.setRowCount(0)
-        for r_idx, row_data in enumerate(data_rows):
-            self.tab.insertRow(r_idx)
-            for c_idx, val in enumerate(row_data):
-                if c_idx == 0: text = str(int(val))
-                else: text = f"{val:.6f}"
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.tab.setItem(r_idx, c_idx, item)
-        self.tab.setUpdatesEnabled(True)
+        self.lbl_raiz.setText("--")
+        self.lbl_iter.setText("--")
 
-        self.web.setHtml(html_content)
-        
-        # Graficar con punto x0 y raíz
         try:
-            initial_x0 = float(numero_desde_texto(self.le_x0.text()))
-            self.cv.graficar_f(f, initial_x0, raiz=x_i)
-        except: pass
+            expr_txt = self.inp_f.text()
+            if not expr_txt:
+                return
 
-        if not exito: error_final = err
-        self.k_root.findChild(QLabel,"KV").setText(f"{x_i:.6f}")
-        self.k_iter.findChild(QLabel,"KV").setText(str(len(data_rows)))
-        self.k_err.findChild(QLabel,"KV").setText(f"{error_final:.4e}%")
-        self.tabs.setCurrentIndex(2)
+            # --------- Derivación simbólica ---------
+            try:
+                x_sym = Symbol('x')
+                expr_limpia = normalizar_python(expr_txt)
+                expr_sym = sympify(expr_limpia.replace("e_val", "E"))
+                f_sym = expr_sym
+                df_sym = diff(f_sym, x_sym)
+
+                f_latex = latex(f_sym)
+                df_latex = latex(df_sym)
+                df_txt_eval = str(df_sym)
+
+            except Exception as e:
+                QMessageBox.warning(self, "Error Matemático", f"No se pudo derivar: {e}")
+                return
+
+            # --------- Parámetros iniciales ---------
+            x_n = float(self.ix0.text())
+            tol = float(self.itol.text())
+            imax = int(self.iter.text())
+
+            html = f"""
+            <html><body style='font-family:Segoe UI; padding:20px; color:#333; line-height:1.5'>
+            <h2 style='color:#1565c0; border-bottom:2px solid #1565c0; padding-bottom:10px'>
+                Procedimiento Newton-Raphson
+            </h2>
+            <p><b>Función:</b> $$f(x) = {f_latex}$$</p>
+            <p><b>Derivada:</b> $$f'(x) = {df_latex}$$</p>
+            <p><b>Fórmula:</b> $$x_{{n+1}} = x_n - \\frac{{f(x_n)}}{{f'(x_n)}}$$</p>
+            <hr>
+            """
+
+            found = False
+
+            for i in range(1, imax + 1):
+                fx = evaluar(expr_txt, x_n)
+                dfx = evaluar(df_txt_eval, x_n)
+
+                if np.isnan(fx) or np.isnan(dfx):
+                    html += "<div style='background:#ffebee; color:#c62828; padding:15px;'>⚠️ Error: Valor indefinido (NaN).</div>"
+                    break
+
+                if abs(dfx) < 1e-15:
+                    html += "<div style='background:#ffebee; color:#c62828; padding:15px;'>⚠️ Derivada ≈ 0 (división por cero).</div>"
+                    break
+
+                x_next = x_n - (fx / dfx)
+                err = abs((x_next - x_n) / x_next) * 100 if x_next != 0 else 100
+
+                # ----------------- Tabla -----------------
+                r = self.tab.rowCount()
+                self.tab.insertRow(r)
+                for j, val in enumerate([i, x_n, fx, dfx, err]):
+                    item_text = f"{val:.6f}" if j > 0 else str(int(val))
+                    it = QTableWidgetItem(item_text)
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.tab.setItem(r, j, it)
+
+                # ----------------- Paso a paso HTML -----------------
+                html += f"""
+                <div style='background:#fff; border:1px solid #e0e0e0; padding:15px;
+                            margin-bottom:15px; border-radius:8px; border-left:5px solid #1565c0;'>
+                    <b>Iteración {i}</b> (xₙ = {x_n:.5f})<br>
+                    $$f({x_n:.4f}) = {fx:.4f}, \quad f'({x_n:.4f}) = {dfx:.4f}$$<br>
+                    $$x_{{{i+1}}} = {x_n:.5f} - \\frac{{{fx:.4f}}}{{{dfx:.4f}}}
+                    = \\mathbf{{{x_next:.6f}}}$$<br>
+                    <small style='color:#666'>Error: {err:.5f}%</small>
+                </div>
+                """
+
+                # Actualizamos x_n al nuevo valor
+                x_n = x_next
+
+                # ¿Convergencia?
+                if abs(fx) < 1e-15 or err < tol:
+                    root = x_n  # este es nuestro x*
+                    html += f"""
+                    <div style='background:#e8f5e9; color:#2e7d32; padding:20px;
+                                border-radius:8px; text-align:center;'>
+                       <h3>✅ Raíz: {root:.6f}</h3>
+                    </div>
+                    """
+
+                    # ===>>> ACTUALIZAMOS LOS LABELS DEL PANEL IZQUIERDO
+                    self.lbl_raiz.setText(f"{root:.6f}")
+                    self.lbl_iter.setText(str(i))
+
+                    # Redibujar gráfica y marcar raíz exacta sobre el eje x
+                    self.graficar()
+                    self.ax.plot(
+                        root, 0,
+                        'o',
+                        color='#d32f2f',
+                        markersize=6,
+                        markeredgecolor='white',
+                        markeredgewidth=1.1,
+                        zorder=10
+                    )
+                    self.canvas.draw()
+
+                    found = True
+                    break
+
+            # Si no convergió, al menos mostramos el último x_n como aproximación
+            if not found:
+                html += "<div style='color:#d32f2f; text-align:center;'>⚠️ No convergió dentro del número máximo de iteraciones.</div>"
+                # Mostramos la última aproximación igual
+                self.lbl_raiz.setText(f"{x_n:.6f}")
+                self.lbl_iter.setText(str(imax))
+
+            html += """
+            <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+            <script id="MathJax-script" async
+                    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+            </body></html>
+            """
+
+            self.web.setHtml(html)
+            self.tabs.setCurrentIndex(2)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
 
     def limpiar(self):
-        self.le_f.clear(); self.le_x0.clear()
-        self.tab.setRowCount(0); self.web.setHtml("")
-        self.k_root.findChild(QLabel,"KV").setText("--")
-        self.k_iter.findChild(QLabel,"KV").setText("--")
-        self.k_err.findChild(QLabel,"KV").setText("--")
-        self.cv._configurar_estilo_geogebra(); self.cv.draw_idle()
+        self.inp_f.clear()
+        self.ix0.setText("0.5")
+        self.tab.setRowCount(0)
+        self.web.setHtml("")
+        self.lbl_raiz.setText("--")
+        self.lbl_iter.setText("--")
+        self.graficar()
 
     def exportar(self):
-        if self.tab.rowCount()==0: return
-        p, _ = QFileDialog.getSaveFileName(self,"Guardar","newton.xlsx","Excel (*.xlsx)")
-        if p:
-            d = [[self.tab.item(r,c).text() for c in range(5)] for r in range(self.tab.rowCount())]
-            pd.DataFrame(d,columns=["Iter","xi","f(xi)","f'(xi)","Err(%)"]).to_excel(p,index=False)
-            QMessageBox.information(self,"Ok","Guardado")
+        if not pd:
+            QMessageBox.warning(self, "X", "Pandas no instalado")
+            return
+        if self.tab.rowCount() == 0:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Guardar", "newton.xlsx", "Excel (*.xlsx)")
+        if path:
+            d = [[self.tab.item(r, c).text() for c in range(5)] for r in range(self.tab.rowCount())]
+            pd.DataFrame(d, columns=["Iter", "xn", "f(xn)", "f'(xn)", "Err"]).to_excel(path, index=False)
+            QMessageBox.information(self, "Ok", "Exportado correctamente")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     w = VentanaNewton()
     w.show()
     sys.exit(app.exec())

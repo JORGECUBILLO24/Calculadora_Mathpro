@@ -1,324 +1,553 @@
-
-import os
 import sys
+import os
 
-# --- PARCHE GPU (VITAL) ---
+# --- PARCHE PARA RENDIMIENTO ---
 os.environ["QT_OPENGL"] = "software"
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
-os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu --no-sandbox"
 
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QSize, pyqtProperty, QTimer
-from PyQt6.QtGui import QFont, QColor, QAction, QPainter, QBrush, QIcon
+from PyQt6.QtCore import Qt, QSize, QUrl
+from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QFrame, QStackedWidget, QSizePolicy, QGraphicsOpacityEffect, 
-    QMenu, QGridLayout, QMessageBox, QScrollArea
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QLabel, QPushButton, QFrame, QGridLayout, QScrollArea, 
+    QLineEdit, QGraphicsDropShadowEffect, QStackedWidget, QMessageBox, 
+    QDialog, QSlider, QComboBox, QButtonGroup, QRadioButton
 )
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 # =============================================================================
-#  IMPORTACIONES SEGURAS
+#  TRADUCCIONES
+# =============================================================================
+TRANSLATIONS = {
+    "ES": {
+        "search_ph": "Buscar en YouTube...",
+        "sec_num": "Análisis Numérico",
+        "sec_math": "Matemáticas & Lógica",
+        "sec_sys": "Sistema",
+        "btn_open": "Abrir Herramienta",
+        "btn_back": "← Volver al Menú",
+        "settings_title": "Configuración Global",
+        "lbl_zoom": "Zoom:",
+        "lbl_lang": "Idioma:",
+        "lbl_theme": "Tema:",
+        "theme_light": "Claro (Light)",
+        "theme_dark": "Oscuro (ChatGPT)",
+        "btn_apply": "GUARDAR Y APLICAR",
+        "devs_title": "Créditos",
+        "devs_sub": "Ingeniería en Sistemas - UAM",
+        "desc_bis": "Encuentra raíces dividiendo intervalos.",
+        "desc_fal": "Método cerrado con interpolación lineal.",
+        "desc_new": "Método abierto de convergencia rápida.",
+        "desc_sec": "Alternativa a Newton sin derivadas.",
+        "desc_mat": "Suma, resta y multiplicación.",
+        "desc_det": "Cálculo recursivo por cofactores.",
+        "desc_esc": "Producto de un número por matriz.",
+        "desc_der": "Visualización gráfica paso a paso.",
+        "desc_con": "Operaciones con diagramas de Venn.",
+        "desc_log": "Tablas de verdad y proposiciones.",
+        "desc_set": "Configurar zoom y tema.",
+        "desc_dev": "Equipo de desarrollo."
+    },
+    "EN": {
+        "search_ph": "Search on YouTube...",
+        "sec_num": "Numerical Analysis",
+        "sec_math": "Math & Logic",
+        "sec_sys": "System",
+        "btn_open": "Open Tool",
+        "btn_back": "← Back to Menu",
+        "settings_title": "Global Settings",
+        "lbl_zoom": "Zoom:",
+        "lbl_lang": "Language:",
+        "lbl_theme": "Theme:",
+        "theme_light": "Light",
+        "theme_dark": "Dark (ChatGPT)",
+        "btn_apply": "SAVE & APPLY",
+        "devs_title": "Credits",
+        "devs_sub": "Systems Engineering - UAM",
+        "desc_bis": "Roots via closed intervals.",
+        "desc_fal": "Improved closed method.",
+        "desc_new": "Fast convergence.",
+        "desc_sec": "Alternative without derivatives.",
+        "desc_mat": "Fundamental operations.",
+        "desc_det": "Recursive calculation.",
+        "desc_esc": "Basic operation.",
+        "desc_der": "Step-by-step graphs.",
+        "desc_con": "Venn diagrams.",
+        "desc_log": "Truth tables.",
+        "desc_set": "App settings.",
+        "desc_dev": "Development Team."
+    }
+}
+CURRENT_LANG = "ES"
+
+# =============================================================================
+#  IMPORTACIÓN SEGURA
 # =============================================================================
 MODULES = {}
+
 def safe_import():
     global MODULES
-    try: from Metodo_biseccion import VentanaBiseccion; MODULES['Biseccion'] = VentanaBiseccion
+    try: 
+        from Metodo_biseccion import VentanaBiseccion
+        MODULES['Biseccion'] = VentanaBiseccion
     except: pass
-    try: from Metodo_newton_raphson import VentanaNewton; MODULES['Newton'] = VentanaNewton
+    try: 
+        from Metodo_newton_raphson import VentanaNewton
+        MODULES['Newton'] = VentanaNewton
     except: pass
-    try: from Metodo_secante import VentanaSecante; MODULES['Secante'] = VentanaSecante
+    try: 
+        from Metodo_secante import VentanaSecante
+        MODULES['Secante'] = VentanaSecante
     except: pass
-    try: from Metodo_Falsa_Posición import VentanaFalsaPosicion; MODULES['Falsa'] = VentanaFalsaPosicion
+    try: 
+        from Metodo_Falsa_Posición import VentanaFalsaPosicion
+        MODULES['Falsa'] = VentanaFalsaPosicion
     except: pass
-    try: from Matrices import VentanaMatrices; MODULES['Matrices'] = VentanaMatrices
+    try: 
+        from Matrices import VentanaMatrices
+        MODULES['Matrices'] = VentanaMatrices
     except: pass
-    try: from Determinantes import VentanaDeterminantes; MODULES['Determinantes'] = VentanaDeterminantes
+    try: 
+        from Determinantes import VentanaDeterminantes
+        MODULES['Determinantes'] = VentanaDeterminantes
     except: pass
-    try: from Multiplicacion_escalar import VentanaMultiplicacionEscalar; MODULES['Escalar'] = VentanaMultiplicacionEscalar
+    try: 
+        from Multiplicacion_escalar import VentanaMultiplicacionEscalar
+        MODULES['Escalar'] = VentanaMultiplicacionEscalar
     except: pass
-    try: from derivadas import ManimDerivadaApp; MODULES['Derivadas'] = ManimDerivadaApp
+    try: 
+        from derivadas import ManimDerivadaApp
+        MODULES['Derivadas'] = ManimDerivadaApp
     except: pass
-    try: from Conjuntos import CalculadoraConjuntos; MODULES['Conjuntos'] = CalculadoraConjuntos
+    try: 
+        from Conjuntos import CalculadoraConjuntos
+        MODULES['Conjuntos'] = CalculadoraConjuntos
     except: pass
-    try: from Logica_simbolica_inferencial import VentanaLogica; MODULES['Logica'] = VentanaLogica
+    try: 
+        from Logica_simbolica_inferencial import VentanaLogica
+        MODULES['Logica'] = VentanaLogica
     except: pass
 
 safe_import()
 
 # =============================================================================
-#  TEMAS
+#  ESTILOS CSS (SIN BORDES EN TEXTOS)
 # =============================================================================
 
-# TEMA DARK PRO
-THEME_DARK = """
-QMainWindow, QWidget#MainWidget { background-color: #1E1E2E; }
-QFrame#SideMenu { background-color: #181825; border-right: 1px solid #11111b; }
-QLabel#AppTitle { color: #FFFFFF; font-weight: 900; font-size: 24px; letter-spacing: 1px; }
-QLabel#Version { color: #6C7086; font-size: 12px; font-style: italic; margin-bottom: 20px; }
-QPushButton.MenuBtn { background-color: transparent; border: none; color: #A6ADC8; text-align: left; padding: 15px 20px; font-size: 15px; border-radius: 8px; font-weight: 600; }
-QPushButton.MenuBtn:hover { background-color: #313244; color: #FFFFFF; }
-QPushButton.MenuBtn:checked { background-color: #313244; color: #89B4FA; font-weight: bold; border-left: 5px solid #89B4FA; }
-QLabel#LogoCenter { color: #FFFFFF; font-weight: 900; font-size: 110px; opacity: 0.8; }
-QStackedWidget#MainStack { background-color: #1E1E2E; border-radius: 0px; }
-QMenu { background-color: #181825; border: 1px solid #313244; border-radius: 8px; padding: 5px 0; }
-QMenu::item { padding: 8px 25px; font-size: 14px; color: #CDD6F4; }
-QMenu::item:selected { background-color: #89B4FA; color: #1E1E2E; font-weight: bold; }
-QScrollArea { background: transparent; border: none; }
-QWidget#ScrollContents { background: transparent; }
+STYLES_LIGHT = """
+/* FONDO GLOBAL */
+QWidget { background-color: #F8FAFC; color: #1F2937; font-family: 'Segoe UI', sans-serif; }
+QScrollArea { background-color: transparent; border: none; }
+
+/* HEADER */
+QFrame#Header { background-color: #FFFFFF; border-bottom: 1px solid #E5E7EB; }
+QPushButton#LogoText { color: #111827; font-weight: 900; font-size: 32px; font-family: 'Arial Black'; border: none; background: transparent; }
+QLabel#LogoBar { background-color: #3B82F6; border-radius: 3px; }
+
+/* TARJETAS (SOLO CLASE .Card TIENE BORDE) */
+QFrame.Card { 
+    background-color: #FFFFFF; 
+    border: 1px solid #E5E7EB; 
+    border-radius: 16px; 
+}
+QFrame.Card QLabel { border: none; background: transparent; }
+
+QFrame.SectionBox { background-color: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 24px; }
+
+/* HOVER */
+QFrame.Card:hover { border: 1px solid #3B82F6; }
+
+/* TEXTOS */
+QLabel { color: #374151; border: none; }
+QLabel.SectionTitle { color: #111827; font-weight: 800; font-size: 26px; }
+QLabel.CardTitle { color: #111827; font-weight: 700; font-size: 18px; background: transparent; }
+QLabel.CardDesc { color: #6B7280; font-size: 13px; font-weight: 400; background: transparent; }
+QLabel.SettingLabel { font-size: 15px; font-weight: 600; color: #374151; }
+
+/* INPUTS */
+QLineEdit { 
+    background-color: #F9FAFB; border: 2px solid #E5E7EB; border-radius: 12px; padding: 0 15px; color: #111827; font-size: 14px;
+}
+QLineEdit:focus { border: 2px solid #3B82F6; background-color: #FFFFFF; }
+
+/* BOTONES */
+QPushButton { background-color: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 10px; padding: 8px; color: #4B5563; font-weight: 600; }
+QPushButton:hover { background-color: #F3F4F6; color: #111827; }
+
+/* BOTÓN TARJETA (AZUL SUAVE) */
+QPushButton.CardBtn {
+    background-color: #E8F0FE; 
+    color: #1A73E8;            
+    border: none;              
+    border-radius: 8px; 
+    font-weight: 700; 
+    padding: 10px;
+    font-size: 13px;
+}
+QPushButton.CardBtn:hover { background-color: #D2E3FC; color: #174EA6; }
+
+/* ACCIONES */
+QPushButton#YoutubeBtn { background-color: #EF4444; color: white; border: none; border-radius: 12px; font-size: 16px; }
+QPushButton#BackBtn { background-color: #3B82F6; color: white; border: none; border-radius: 12px; font-weight: 700; padding: 0 20px; }
 """
 
-# TEMA LIGHT PREMIUM
-THEME_LIGHT = """
-QMainWindow, QWidget#MainWidget { background-color: #F5F5F0; }
-QFrame#SideMenu { background-color: #FFFFFF; border-right: 1px solid #D7CCC8; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
-QLabel#AppTitle { color: #37474F; font-weight: 900; font-size: 24px; letter-spacing: 1px; }
-QLabel#Version { color: #78909C; font-size: 12px; font-style: italic; margin-bottom: 20px; }
-QPushButton.MenuBtn { background-color: transparent; border: none; color: #546E7A; text-align: left; padding: 15px 20px; font-size: 15px; border-radius: 8px; font-weight: 600; }
-QPushButton.MenuBtn:hover { background-color: #ECEFF1; color: #263238; }
-QPushButton.MenuBtn:checked { background-color: #E0E0E0; color: #000000; font-weight: bold; border-left: 5px solid #37474F; }
-QLabel#LogoCenter { color: #546E7A; font-weight: 900; font-size: 110px; opacity: 0.3; }
-QStackedWidget#MainStack { background-color: #F5F5F0; border-radius: 0px; }
-QMenu { background-color: #FFFFFF; border: 1px solid #B0BEC5; border-radius: 8px; padding: 5px 0; }
-QMenu::item { padding: 8px 25px; font-size: 14px; color: #37474F; }
-QMenu::item:selected { background-color: #37474F; color: white; font-weight: bold; }
-QScrollArea { background: transparent; border: none; }
-QWidget#ScrollContents { background: transparent; }
+STYLES_DARK = """
+/* MODO OSCURO */
+QWidget { background-color: #202123; color: #ECECF1; font-family: 'Segoe UI', sans-serif; }
+QScrollArea { background-color: transparent; border: none; }
+QFrame#Header { background-color: #202123; border-bottom: 1px solid #3F3F46; }
+QPushButton#LogoText { color: #FFFFFF; font-weight: 900; font-size: 32px; font-family: 'Arial Black'; border: none; background: transparent; }
+QLabel#LogoBar { background-color: #EF4444; border-radius: 3px; }
+
+/* TARJETAS */
+QFrame.Card { background-color: #2A2B32; border: 1px solid #3F3F46; border-radius: 16px; }
+QFrame.Card QLabel { border: none; background: transparent; }
+QFrame.SectionBox { background-color: #2A2B32; border: 1px solid #3F3F46; border-radius: 24px; }
+QFrame.Card:hover { border: 1px solid #EF4444; }
+
+/* TEXTOS */
+QLabel { color: #ECECF1; border: none; }
+QLabel.SectionTitle { color: #FFFFFF; font-weight: 800; font-size: 26px; }
+QLabel.CardTitle { color: #FFFFFF; font-weight: 700; font-size: 18px; background: transparent; }
+QLabel.CardDesc { color: #A1A1AA; font-size: 13px; font-weight: 400; background: transparent; }
+
+/* INPUTS */
+QLineEdit { background-color: #343541; border: 2px solid #565869; border-radius: 12px; padding: 0 15px; color: #FFF; }
+QLineEdit:focus { border: 2px solid #EF4444; background-color: #40414F; }
+
+/* BOTONES */
+QPushButton { background-color: #343541; border: 1px solid #565869; border-radius: 10px; padding: 8px; color: #ECECF1; font-weight: 600; }
+QPushButton:hover { background-color: #40414F; color: #FFF; }
+
+/* BOTÓN TARJETA (ROJO SUAVE) */
+QPushButton.CardBtn {
+    background-color: #3A2E2E; color: #F87171; border: none; border-radius: 8px; font-weight: 700; padding: 10px; font-size: 13px;
+}
+QPushButton.CardBtn:hover { background-color: #453030; color: #EF4444; }
+
+QPushButton#YoutubeBtn { background-color: #EF4444; color: white; border: none; border-radius: 12px; font-size: 16px; }
+QPushButton#BackBtn { background-color: #EF4444; color: white; border: none; border-radius: 12px; font-weight: 700; padding: 0 20px; }
 """
 
 # =============================================================================
-#  COMPONENTES UI
+#  CLASES
 # =============================================================================
-class RippleButton(QPushButton):
-    def __init__(self, text="", parent=None):
-        super().__init__(text, parent)
-        self._ripple_col = QColor(255, 255, 255, 40)
-        self._rad = 0; self._center = None
-        self._anim = QPropertyAnimation(self, b"radius", self)
-        self._anim.setDuration(400); self._anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-        self._anim.finished.connect(self.update)
-    @pyqtProperty(int)
-    def radius(self): return self._rad
-    @radius.setter
-    def radius(self, r): self._rad = r; self.update()
-    def mousePressEvent(self, e):
-        self._center = e.position(); self._rad = 0
-        self._anim.setStartValue(0); self._anim.setEndValue(max(self.width(), self.height()) * 1.5)
-        self._anim.start(); super().mousePressEvent(e)
-    def paintEvent(self, e):
-        super().paintEvent(e)
-        if self._rad > 0 and self._center:
-            p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setBrush(QBrush(self._ripple_col)); p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(self._center, self._rad, self._rad)
+class YoutubeViewer(QDialog):
+    def __init__(self, query, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"YouTube: {query}")
+        self.resize(1100, 650)
+        l = QVBoxLayout(self); l.setContentsMargins(0,0,0,0)
+        self.web = QWebEngineView()
+        self.web.setUrl(QUrl(f"https://www.youtube.com/results?search_query={query}"))
+        l.addWidget(self.web)
 
-class AuthorCard(QFrame):
-    # CORRECCIÓN: Se asegura de recibir 3 argumentos
-    def __init__(self, name, role, delay):
+class ModuleCard(QFrame):
+    def __init__(self, title_key, desc_key, icon, action_key, main_window, is_int=False):
         super().__init__()
-        self.setFixedSize(260, 160)
-        self.setStyleSheet("""
-            QFrame { 
-                background-color: rgba(255, 255, 255, 0.95); 
-                border-radius: 15px; 
-                border: 1px solid rgba(128, 128, 128, 0.2); 
-                border-bottom: 4px solid #448AFF;
-            }
-            QFrame:hover { margin-top: -5px; border-bottom-color: #2979FF; background-color: #FFFFFF; }
-        """)
-        l = QVBoxLayout(self); l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        av = QLabel(name[0:2].upper()); av.setFixedSize(50,50); av.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        av.setStyleSheet("background:#448AFF; color:white; border-radius:25px; font-size:20px; font-weight:bold;")
-        n = QLabel(name); n.setStyleSheet("font-size:17px; font-weight:bold; color:#1e293b; margin-top:8px; border:none; background:transparent;")
-        r = QLabel(role); r.setStyleSheet("font-size:12px; color:#64748b; font-style:italic; border:none; background:transparent;")
-        l.addWidget(av, 0, Qt.AlignmentFlag.AlignCenter)
-        l.addWidget(n, 0, Qt.AlignmentFlag.AlignCenter)
-        l.addWidget(r, 0, Qt.AlignmentFlag.AlignCenter)
+        self.main = main_window; self.key = action_key; self.is_int = is_int
+        self.t_key = title_key; self.d_key = desc_key
         
-        self.eff = QGraphicsOpacityEffect(self); self.setGraphicsEffect(self.eff)
-        self.anim = QPropertyAnimation(self.eff, b"opacity"); self.anim.setDuration(800); self.anim.setStartValue(0); self.anim.setEndValue(1)
-        QTimer.singleShot(delay, self.anim.start)
+        self.setProperty("class", "Card")
+        self.setFixedSize(260, 180) 
+        
+        l = QVBoxLayout(self); l.setContentsMargins(20,20,20,20); l.setSpacing(4)
 
-class AuthorsPage(QWidget):
+        h = QHBoxLayout()
+        ico = QLabel(icon); ico.setStyleSheet("font-size: 32px; background: transparent; border: none;")
+        h.addWidget(ico); h.addStretch()
+        l.addLayout(h)
+        l.addSpacing(5)
+
+        self.lbl_t = QLabel(TRANSLATIONS[CURRENT_LANG].get(title_key, title_key))
+        self.lbl_t.setProperty("class", "CardTitle")
+        l.addWidget(self.lbl_t)
+
+        self.lbl_d = QLabel(TRANSLATIONS[CURRENT_LANG].get(desc_key, desc_key))
+        self.lbl_d.setProperty("class", "CardDesc")
+        self.lbl_d.setWordWrap(True)
+        self.lbl_d.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.lbl_d.setMinimumHeight(35) 
+        l.addWidget(self.lbl_d)
+
+        l.addStretch()
+
+        self.btn = QPushButton(TRANSLATIONS[CURRENT_LANG]["btn_open"])
+        self.btn.setProperty("class", "CardBtn")
+        self.btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn.clicked.connect(self.act)
+        l.addWidget(self.btn)
+
+    def act(self):
+        if self.is_int:
+            if self.key == "settings": self.main.switch_page(2)
+            elif self.key == "devs": self.main.switch_page(3)
+        else: self.main.switch_page(1, mod_key=self.key)
+
+    def refresh(self):
+        self.lbl_t.setText(TRANSLATIONS[CURRENT_LANG].get(self.t_key, self.t_key))
+        self.lbl_d.setText(TRANSLATIONS[CURRENT_LANG].get(self.d_key, self.d_key))
+        self.btn.setText(TRANSLATIONS[CURRENT_LANG]["btn_open"])
+
+# =============================================================================
+#  PÁGINAS
+# =============================================================================
+class DashboardPage(QWidget):
+    def __init__(self, main):
+        super().__init__()
+        self.main = main; self.cards = []
+        l = QVBoxLayout(self); l.setContentsMargins(0,0,0,0)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        content = QWidget(); content.setObjectName("DashboardContent")
+        cl = QVBoxLayout(content); cl.setContentsMargins(60, 30, 60, 60); cl.setSpacing(40)
+
+        # 1. Numérico
+        self.t1 = QLabel(TRANSLATIONS[CURRENT_LANG]["sec_num"]); self.t1.setProperty("class", "SectionTitle")
+        self.t1.setAlignment(Qt.AlignmentFlag.AlignCenter); cl.addWidget(self.t1)
+        
+        box1 = QFrame(); box1.setProperty("class", "SectionBox")
+        bl1 = QVBoxLayout(box1); bl1.setContentsMargins(30, 30, 30, 30)
+        g1 = QGridLayout(); g1.setSpacing(20)
+        d1 = [("Bisección", "desc_bis", "✂️", "Biseccion"), ("Falsa Posición", "desc_fal", "🎯", "Falsa"),
+              ("Newton-Raphson", "desc_new", "🚀", "Newton"), ("Secante", "desc_sec", "📉", "Secante")]
+        
+        # CAMBIO AQUI: cols=2 para matriz 2x2
+        self._grid(g1, d1, 2) 
+        bl1.addLayout(g1); cl.addWidget(box1)
+
+        # 2. Math
+        self.t2 = QLabel(TRANSLATIONS[CURRENT_LANG]["sec_math"]); self.t2.setProperty("class", "SectionTitle")
+        self.t2.setAlignment(Qt.AlignmentFlag.AlignCenter); cl.addWidget(self.t2)
+        
+        box2 = QFrame(); box2.setProperty("class", "SectionBox")
+        bl2 = QVBoxLayout(box2); bl2.setContentsMargins(30, 30, 30, 30)
+        g2 = QGridLayout(); g2.setSpacing(20)
+        d2 = [("Matrices", "desc_mat", "🔢", "Matrices"), ("Determinantes", "desc_det", "📐", "Determinantes"),
+              ("Mult. Escalar", "desc_esc", "✖️", "Escalar"), ("Derivadas", "desc_der", "🎬", "Derivadas"),
+              ("Conjuntos", "desc_con", "⭕", "Conjuntos"), ("Lógica", "desc_log", "🧠", "Logica")]
+        
+        # CAMBIO AQUI: cols=2 para matriz 2 columnas (se verán 3 filas)
+        self._grid(g2, d2, 2)
+        bl2.addLayout(g2); cl.addWidget(box2)
+
+        # 3. System
+        self.t3 = QLabel(TRANSLATIONS[CURRENT_LANG]["sec_sys"]); self.t3.setProperty("class", "SectionTitle")
+        self.t3.setAlignment(Qt.AlignmentFlag.AlignCenter); cl.addWidget(self.t3)
+        
+        box3 = QFrame(); box3.setProperty("class", "SectionBox")
+        bl3 = QVBoxLayout(box3); bl3.setContentsMargins(30, 30, 30, 30)
+        g3 = QGridLayout(); g3.setSpacing(20)
+        d3 = [("Ajustes", "desc_set", "⚙️", "settings"), ("Equipo", "desc_dev", "👥", "devs")]
+        
+        # CAMBIO AQUI: cols=2
+        self._grid(g3, d3, 2, True)
+        bl3.addLayout(g3); cl.addWidget(box3)
+
+        cl.addStretch()
+        scroll.setWidget(content); l.addWidget(scroll)
+
+    def _grid(self, g, data, cols, is_int=False):
+        r, c = 0, 0
+        for ti, de, ic, k in data:
+            card = ModuleCard(ti, de, ic, k, self.main, is_int)
+            self.cards.append(card); g.addWidget(card, r, c); c+=1
+            if c>=cols: c=0; r+=1
+    
+    def refresh(self):
+        self.t1.setText(TRANSLATIONS[CURRENT_LANG]["sec_num"])
+        self.t2.setText(TRANSLATIONS[CURRENT_LANG]["sec_math"])
+        self.t3.setText(TRANSLATIONS[CURRENT_LANG]["sec_sys"])
+        for c in self.cards: c.refresh()
+
+class SettingsPage(QWidget):
+    def __init__(self, main):
+        super().__init__()
+        self.main = main
+        l = QVBoxLayout(self); l.setContentsMargins(150, 50, 150, 50); l.setSpacing(20)
+        
+        self.tit = QLabel(TRANSLATIONS[CURRENT_LANG]["settings_title"]); self.tit.setProperty("class", "SectionTitle")
+        l.addWidget(self.tit)
+
+        card = QFrame(); card.setProperty("class", "Card"); 
+        cl = QVBoxLayout(card); cl.setContentsMargins(40,40,40,40); cl.setSpacing(30)
+        
+        # ZOOM
+        self.l_z = QLabel(TRANSLATIONS[CURRENT_LANG]["lbl_zoom"]); self.l_z.setProperty("class", "SettingLabel")
+        self.sl_z = QSlider(Qt.Orientation.Horizontal); self.sl_z.setRange(8, 20); self.sl_z.setValue(10)
+        self.v_z = QLabel("10 pt"); self.v_z.setProperty("class", "SettingLabel")
+        self.sl_z.valueChanged.connect(lambda v: self.v_z.setText(f"{v} pt"))
+        h1 = QHBoxLayout(); h1.addWidget(self.l_z); h1.addStretch(); h1.addWidget(self.sl_z); h1.addWidget(self.v_z)
+        cl.addLayout(h1)
+
+        # IDIOMA
+        self.l_la = QLabel(TRANSLATIONS[CURRENT_LANG]["lbl_lang"]); self.l_la.setProperty("class", "SettingLabel")
+        self.cb_la = QComboBox(); self.cb_la.addItems(["Español", "English"])
+        h2 = QHBoxLayout(); h2.addWidget(self.l_la); h2.addStretch(); h2.addWidget(self.cb_la)
+        cl.addLayout(h2)
+
+        # TEMA
+        self.l_th = QLabel(TRANSLATIONS[CURRENT_LANG]["lbl_theme"]); self.l_th.setProperty("class", "SettingLabel")
+        self.rb_l = QRadioButton(TRANSLATIONS[CURRENT_LANG]["theme_light"]); self.rb_l.setChecked(True)
+        self.rb_d = QRadioButton(TRANSLATIONS[CURRENT_LANG]["theme_dark"])
+        self.bg = QButtonGroup(); self.bg.addButton(self.rb_l); self.bg.addButton(self.rb_d)
+        h3 = QHBoxLayout(); h3.addWidget(self.l_th); h3.addStretch(); h3.addWidget(self.rb_l); h3.addWidget(self.rb_d)
+        cl.addLayout(h3)
+
+        l.addWidget(card)
+
+        self.btn = QPushButton(TRANSLATIONS[CURRENT_LANG]["btn_apply"])
+        self.btn.setStyleSheet("background-color: #2563EB; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold;")
+        self.btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn.clicked.connect(self.apply)
+        hb = QHBoxLayout(); hb.addStretch(); hb.addWidget(self.btn); hb.addStretch()
+        l.addLayout(hb); l.addStretch()
+
+    def apply(self):
+        font = QApplication.font(); font.setPointSize(self.sl_z.value()); QApplication.setFont(font)
+        global CURRENT_LANG; CURRENT_LANG = "ES" if self.cb_la.currentIndex() == 0 else "EN"
+        self.main.set_theme(self.rb_d.isChecked())
+        self.main.refresh_ui()
+        QMessageBox.information(self, "OK", "Configuración Aplicada")
+
+    def refresh(self):
+        self.tit.setText(TRANSLATIONS[CURRENT_LANG]["settings_title"])
+        self.l_z.setText(TRANSLATIONS[CURRENT_LANG]["lbl_zoom"])
+        self.l_la.setText(TRANSLATIONS[CURRENT_LANG]["lbl_lang"])
+        self.l_th.setText(TRANSLATIONS[CURRENT_LANG]["lbl_theme"])
+        self.rb_l.setText(TRANSLATIONS[CURRENT_LANG]["theme_light"])
+        self.rb_d.setText(TRANSLATIONS[CURRENT_LANG]["theme_dark"])
+        self.btn.setText(TRANSLATIONS[CURRENT_LANG]["btn_apply"])
+
+class DevelopersPage(QWidget):
     def __init__(self):
         super().__init__()
-        main_layout = QVBoxLayout(self); main_layout.setContentsMargins(0,0,0,0)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        content_widget = QWidget(); content_widget.setObjectName("ScrollContents")
-        
-        l = QVBoxLayout(content_widget); l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        t = QLabel("Créditos y Desarrollo"); t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        t.setStyleSheet("font-size:36px; font-weight:900; color:#448AFF; margin-top:30px; background:transparent;")
-        
-        st = QLabel("Proyecto MathPro - Ingeniería en Sistemas"); st.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        st.setStyleSheet("font-size:16px; color:#607D8B; margin-bottom:40px; background:transparent;")
-        
-        l.addWidget(t); l.addWidget(st)
-        
-        grid_w = QWidget(); grid_w.setStyleSheet("background:transparent;")
-        grid = QGridLayout(grid_w); grid.setSpacing(30); grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # CORRECCIÓN: Datos completos (Nombre, Rol, Delay)
-        team = [
-            ("Jorge Cubillo", "Líder & Backend", 0), 
-            ("Ervin Perez", "UI/UX Design", 150),
-            ("Isaac Mora", "Lógica Matemática", 300), 
-            ("Diego Luquez", "QA & Testing", 450)
-        ]
+        l = QVBoxLayout(self); l.setContentsMargins(0,0,0,0)
+        top = QWidget(); tl = QVBoxLayout(top); tl.setSpacing(10); tl.setContentsMargins(0,60,0,40)
+        self.t = QLabel(TRANSLATIONS[CURRENT_LANG]["devs_title"]); self.t.setProperty("class", "SectionTitle"); self.t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.s = QLabel(TRANSLATIONS[CURRENT_LANG]["devs_sub"]); self.s.setStyleSheet("color: #6B7280; font-size: 16px;")
+        self.s.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        tl.addWidget(self.t); tl.addWidget(self.s); l.addWidget(top)
+
+        g = QWidget(); gl = QGridLayout(g); gl.setSpacing(30); gl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        def mk_card(n, r, c):
+            f = QFrame(); f.setFixedSize(220, 140)
+            f.setProperty("class", "Card")
+            f.setStyleSheet(f"border-top: 4px solid {c};") 
+            v = QVBoxLayout(f); v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            nm = QLabel(n); nm.setProperty("class", "CardTitle")
+            rl = QLabel(r); rl.setProperty("class", "CardDesc")
+            v.addWidget(nm); v.addWidget(rl)
+            return f
+
+        devs = [("Jorge Cubillo", "Líder & Backend", "#2563EB"), ("Ervin Perez", "UI/UX Design", "#F59E0B"),
+                ("Isaac Mora", "Lógica Matemática", "#10B981"), ("Diego Luquez", "QA & Testing", "#8B5CF6")]
         pos = [(0,0), (0,1), (1,0), (1,1)]
-        
-        # CORRECCIÓN: Desempaquetado correcto (name, role, delay)
-        for (nm, rl, d), p in zip(team, pos): 
-            grid.addWidget(AuthorCard(nm, rl, d), *p)
-        
-        l.addWidget(grid_w); l.addStretch()
-        scroll.setWidget(content_widget); main_layout.addWidget(scroll)
+        for (n,r,c), p in zip(devs, pos): gl.addWidget(mk_card(n,r,c), *p)
+        l.addWidget(g); l.addStretch()
 
-class VentanaFuncionesExtras(QWidget):
-    def __init__(self, parent_main):
-        super().__init__()
-        self.main = parent_main
-        l = QVBoxLayout(self); l.setAlignment(Qt.AlignmentFlag.AlignCenter); l.setSpacing(30)
-        
-        t = QLabel("Herramientas Adicionales"); t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        t.setStyleSheet("font-size: 32px; font-weight: bold; color: #1565C0;")
-        l.addWidget(t)
-
-        grid = QGridLayout(); grid.setSpacing(20)
-        opts = [("Calculadora Derivadas", "Derivadas", "#1E88E5", "⚡"),
-                ("Teoría Conjuntos", "Conjuntos", "#43A047", "⚪"),
-                ("Lógica Simbólica", "Logica", "#FB8C00", "🧠")]
-        
-        for i, (txt, key, col, icon) in enumerate(opts):
-            btn = QPushButton(f"{icon}\n{txt}")
-            btn.setFixedSize(220, 150); btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(f"""
-                QPushButton {{ background-color: white; color: {col}; border: 2px solid {col}; border-radius: 15px; font-size: 18px; font-weight: bold; }} 
-                QPushButton:hover {{ background-color: {col}; color: white; }}
-            """)
-            btn.clicked.connect(lambda _, k=key: self.main.load_module(MODULES.get(k)))
-            grid.addWidget(btn, 0, i)
-        l.addLayout(grid)
+    def refresh(self):
+        self.t.setText(TRANSLATIONS[CURRENT_LANG]["devs_title"])
+        self.s.setText(TRANSLATIONS[CURRENT_LANG]["devs_sub"])
 
 # =============================================================================
-#  VENTANA PRINCIPAL
+#  MAIN WINDOW
 # =============================================================================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MathPro Suite - Ultimate Edition")
-        self.resize(1150, 720) 
-        self.is_dark = True
-        
-        main_widget = QWidget(); main_widget.setObjectName("MainWidget")
-        self.setCentralWidget(main_widget)
-        layout = QHBoxLayout(main_widget); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
-        
-        # SIDEBAR
-        sidebar = QFrame(); sidebar.setObjectName("SideMenu"); sidebar.setFixedWidth(260)
-        sl = QVBoxLayout(sidebar); sl.setContentsMargins(15,40,15,20); sl.setSpacing(8)
-        
-        self.lbl_title = QLabel("MATHPRO", objectName="AppTitle")
-        sl.addWidget(self.lbl_title)
-        sl.addWidget(QLabel("v5.4 Final", objectName="Version")); sl.addSpacing(15)
-        
-        self.btn_home = RippleButton("🏠  Inicio")
-        self.btn_anum = RippleButton("📈  Análisis Numérico")
-        self.btn_alg  = RippleButton("🔢  Álgebra Lineal")
-        self.btn_extr = RippleButton("🚀  Funciones Extras")
-        self.btn_auth = RippleButton("👥  Autores")
-        
-        for b in [self.btn_home, self.btn_anum, self.btn_alg, self.btn_extr, self.btn_auth]:
-            b.setProperty("class", "MenuBtn"); b.setCheckable(True); sl.addWidget(b)
-        
-        sl.addStretch()
-        self.btn_theme = QPushButton("☀️  Modo Claro"); self.btn_theme.setObjectName("ThemeBtn")
-        self.btn_theme.setCursor(Qt.CursorShape.PointingHandCursor); self.btn_theme.setFixedHeight(40)
-        self.btn_theme.clicked.connect(self.toggle_theme)
-        sl.addWidget(self.btn_theme)
-        
-        layout.addWidget(sidebar)
-        
-        # CONTENIDO
-        self.stack = QStackedWidget(); self.stack.setObjectName("MainStack")
-        
-        # P0: Home
-        p_home = QWidget(); hl = QVBoxLayout(p_home); hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo = QLabel("MATHPRO"); logo.setObjectName("LogoCenter"); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(logo); self.stack.addWidget(p_home)
-        
-        # P1: Autores
-        self.stack.addWidget(AuthorsPage())
+        self.setWindowTitle("MathPro - Ultimate Suite")
+        self.resize(1280, 850)
 
-        # P2: Funciones Extras
-        self.stack.addWidget(VentanaFuncionesExtras(self))
+        self.central = QWidget(); self.setCentralWidget(self.central)
+        self.central.setObjectName("MainContainer")
+        self.layout = QVBoxLayout(self.central); self.layout.setContentsMargins(0,0,0,0); self.layout.setSpacing(0)
 
-        # P3: Contenedor de Módulos
-        self.container = QWidget(); self.stack.addWidget(self.container)
+        self._init_header()
         
-        layout.addWidget(self.stack)
-        
-        # Conexiones
-        self.btn_home.clicked.connect(self.go_home)
-        self.btn_auth.clicked.connect(self.go_authors)
-        self.btn_extr.clicked.connect(self.go_extras)
-        
-        self.menu_anum = self._mk_menu([("Bisección", 'Biseccion'), ("Newton-Raphson", 'Newton'), ("Secante", 'Secante'), ("Falsa Posición", 'Falsa')])
-        self.btn_anum.clicked.connect(lambda: self._show_menu(self.btn_anum, self.menu_anum))
-        
-        self.menu_alg = self._mk_menu([("Matrices", 'Matrices'), ("Determinantes", 'Determinantes'), ("Mult. Escalar", 'Escalar')])
-        self.btn_alg.clicked.connect(lambda: self._show_menu(self.btn_alg, self.menu_alg))
-        
-        # Aplicar tema inicial
-        self.setStyleSheet(THEME_DARK)
-        self.go_home()
+        self.stack = QStackedWidget()
+        self.layout.addWidget(self.stack)
 
-    def _mk_menu(self, items):
-        m = QMenu(self)
-        for name, key in items:
-            if key in MODULES: m.addAction(name, lambda checked=False, k=key: self.load_module(MODULES[k]))
-        return m
+        self.p_dash = DashboardPage(self)
+        self.p_mod = QWidget(); self.ml = QVBoxLayout(self.p_mod); self.ml.setContentsMargins(0,0,0,0)
+        self.p_set = SettingsPage(self)
+        self.p_dev = DevelopersPage()
 
-    def _show_menu(self, btn, menu):
-        self._reset_btns(); btn.setChecked(True)
-        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+        self.stack.addWidget(self.p_dash)
+        self.stack.addWidget(self.p_mod)
+        self.stack.addWidget(self.p_set)
+        self.stack.addWidget(self.p_dev)
 
-    def load_module(self, WidgetClass):
-        if not WidgetClass: return
-        try:
-            widget = WidgetClass()
-            if isinstance(widget, QMainWindow):
-                widget.setWindowFlags(Qt.WindowType.Widget)
-                wrapper = QWidget(); wl = QVBoxLayout(wrapper); wl.setContentsMargins(0,0,0,0)
-                wl.addWidget(widget); widget = wrapper
-            
-            old = self.stack.widget(3); self.stack.removeWidget(old)
-            if old: old.deleteLater()
-            
-            self.stack.insertWidget(3, widget); self.stack.setCurrentIndex(3)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al cargar módulo:\n{e}")
+        self.set_theme(False)
 
-    def toggle_theme(self):
-        if self.is_dark:
-            self.setStyleSheet(THEME_LIGHT)
-            self.btn_theme.setText("🌙  Modo Oscuro")
-            self.btn_theme.setStyleSheet("background-color: #263238; color: white;")
-            self.is_dark = False
+    def _init_header(self):
+        h = QFrame(); h.setObjectName("Header"); h.setFixedHeight(85)
+        hl = QHBoxLayout(h); hl.setContentsMargins(30,0,30,0); hl.setSpacing(15)
+
+        logo_c = QWidget(); lc = QHBoxLayout(logo_c); lc.setContentsMargins(0,0,0,0); lc.setSpacing(10)
+        bar = QLabel(); bar.setFixedSize(6, 35); bar.setObjectName("LogoBar")
+        txt = QPushButton("MATHPRO"); txt.setObjectName("LogoText"); txt.setFlat(True); txt.setCursor(Qt.CursorShape.PointingHandCursor)
+        txt.clicked.connect(lambda: self.switch_page(0))
+        lc.addWidget(bar); lc.addWidget(txt)
+        hl.addWidget(logo_c); hl.addStretch()
+
+        self.yt_i = QLineEdit(); self.yt_i.setPlaceholderText(TRANSLATIONS[CURRENT_LANG]["search_ph"])
+        self.yt_i.setObjectName("YoutubeInput"); self.yt_i.setFixedSize(650, 42)
+        self.yt_i.returnPressed.connect(self.search)
+        self.yt_b = QPushButton("▶"); self.yt_b.setObjectName("YoutubeBtn"); self.yt_b.setFixedSize(45, 42)
+        self.yt_b.setCursor(Qt.CursorShape.PointingHandCursor); self.yt_b.clicked.connect(self.search)
+        hl.addWidget(self.yt_i); hl.addWidget(self.yt_b); hl.addStretch()
+
+        self.btn_b = QPushButton(TRANSLATIONS[CURRENT_LANG]["btn_back"]); self.btn_b.setObjectName("BackBtn")
+        self.btn_b.setFixedHeight(42)
+        self.btn_b.setCursor(Qt.CursorShape.PointingHandCursor); self.btn_b.setVisible(False)
+        self.btn_b.clicked.connect(lambda: self.switch_page(0))
+        hl.addWidget(self.btn_b)
+
+        self.layout.addWidget(h)
+
+    def switch_page(self, idx, mod_key=None):
+        if idx == 1 and mod_key: self.load_module(mod_key)
+        self.stack.setCurrentIndex(idx)
+        self.btn_b.setVisible(idx != 0)
+
+    def load_module(self, key):
+        if self.ml.count(): 
+            widget = self.ml.takeAt(0).widget()
+            if widget: widget.deleteLater()
+
+        C = MODULES.get(key)
+        if C:
+            try:
+                w = C()
+                if isinstance(w, QMainWindow):
+                    w.setWindowFlags(Qt.WindowType.Widget)
+                    cw = QWidget(); cv = QVBoxLayout(cw); cv.setContentsMargins(0,0,0,0); cv.addWidget(w)
+                    self.ml.addWidget(cw)
+                else:
+                    self.ml.addWidget(w)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error al cargar '{key}':\n{str(e)}")
         else:
-            self.setStyleSheet(THEME_DARK)
-            self.btn_theme.setText("☀️  Modo Claro")
-            self.btn_theme.setStyleSheet("background-color: #ef233c; color: white;")
-            self.is_dark = True
+            QMessageBox.warning(self, "No Encontrado", f"Módulo '{key}' no encontrado.")
 
-    def go_home(self): self._reset_btns(); self.btn_home.setChecked(True); self.stack.setCurrentIndex(0)
-    def go_authors(self): self._reset_btns(); self.btn_auth.setChecked(True); self.stack.setCurrentIndex(1)
-    def go_extras(self): self._reset_btns(); self.btn_extr.setChecked(True); self.stack.setCurrentIndex(2)
-    def _reset_btns(self):
-        for b in [self.btn_home, self.btn_anum, self.btn_alg, self.btn_extr, self.btn_auth]: b.setChecked(False)
+    def search(self):
+        if self.yt_i.text(): YoutubeViewer(self.yt_i.text(), self).exec()
+
+    def set_theme(self, is_dark):
+        app = QApplication.instance()
+        app.setStyleSheet(STYLES_DARK if is_dark else STYLES_LIGHT)
+
+    def refresh_ui(self):
+        self.yt_i.setPlaceholderText(TRANSLATIONS[CURRENT_LANG]["search_ph"])
+        self.btn_b.setText(TRANSLATIONS[CURRENT_LANG]["btn_back"])
+        self.p_dash.refresh()
+        self.p_set.refresh()
+        self.p_dev.refresh()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    font = QFont("Segoe UI", 10); font.setWeight(QFont.Weight.Medium); app.setFont(font)
     w = MainWindow()
     w.show()
     sys.exit(app.exec())
